@@ -117,13 +117,34 @@ def get_sheet():
     gc = gspread.authorize(creds)
     return gc.open_by_key(os.getenv("GOOGLE_SHEET_ID_ALARMAS"))
 
+def leer_precios_base(wb):
+    precios = {}
+    try:
+        ws = wb.worksheet("BASE")
+        rows = ws.get_all_values()
+        for row in rows[1:]:
+            if len(row) >= 3 and row[0]:
+                codigo = row[0].strip()
+                try:
+                    precio = float(row[1].replace("€","").replace(",",".").strip())
+                    tecnico = float(row[2].replace("€","").replace(",",".").strip())
+                    precios[codigo] = {"precio": precio, "tecnico": tecnico}
+                except:
+                    pass
+    except Exception as e:
+        logger.error("Error leyendo BASE: " + str(e))
+    return precios
+
 async def confirmar_registro_alarmas(tecnico, ordenes):
     wb = get_sheet()
+    precios_base = leer_precios_base(wb)
+
     try:
         ws = wb.worksheet(tecnico)
     except gspread.WorksheetNotFound:
-        ws = wb.add_worksheet(title=tecnico, rows=1000, cols=3)
-        ws.append_row(["FECHA", "ORDEN", "CODIGO"])
+        ws = wb.add_worksheet(title=tecnico, rows=1000, cols=5)
+        ws.append_row(["FECHA", "ORDEN", "CODIGO", "PRECIO", "TECNICO"])
+
     registradas = set()
     try:
         existing = ws.get_all_values()
@@ -132,6 +153,7 @@ async def confirmar_registro_alarmas(tecnico, ordenes):
                 registradas.add((row[1].strip().upper(), row[2].strip().upper()))
     except Exception:
         pass
+
     filas = []
     nuevas = 0
     for o in ordenes:
@@ -147,16 +169,22 @@ async def confirmar_registro_alarmas(tecnico, ordenes):
                 "INVIABLE": "ZA_INVIABLE",
             }
             codigo_base = tipo_map.get(tipo, "ZA_" + tipo)
+
         fecha = o.get("fecha", "")
         orden = o["orden"]
         n_camaras = o.get("camaras", 0) or 0
+
+        p = precios_base.get(codigo_base, {"precio": 0, "tecnico": 0})
         if (orden, codigo_base) not in registradas:
-            filas.append([fecha, orden, codigo_base])
+            filas.append([fecha, orden, codigo_base, p["precio"], p["tecnico"]])
             nuevas += 1
+
+        p_cam = precios_base.get("ZA_CAMARA", {"precio": 0, "tecnico": 0})
         for _ in range(n_camaras):
             if (orden, "ZA_CAMARA") not in registradas:
-                filas.append([fecha, orden, "ZA_CAMARA"])
+                filas.append([fecha, orden, "ZA_CAMARA", p_cam["precio"], p_cam["tecnico"]])
                 nuevas += 1
+
     if filas:
         ws.append_rows(filas, value_input_option="USER_ENTERED")
     return nuevas
