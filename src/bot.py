@@ -217,3 +217,64 @@ def main():
 
 if __name__ == "__main__":
     main()
+
+
+# ── NUEVO MES ──────────────────────────────────────────────────────────────────
+from nuevo_mes import ejecutar_nuevo_mes, MESES
+from datetime import datetime
+
+ESPERANDO_CONFIRMACION_MES = 10
+
+async def cmd_nuevo_mes(update, context):
+    if not check_auth(update.effective_user.id):
+        return
+    now = datetime.now()
+    # Sugerir el mes siguiente
+    if now.month == 12:
+        mes, año = 1, now.year + 1
+    else:
+        mes, año = now.month + 1, now.year
+
+    context.user_data["nuevo_mes"] = mes
+    context.user_data["nuevo_año"] = año
+
+    from telegram import InlineKeyboardButton, InlineKeyboardMarkup
+    keyboard = [[
+        InlineKeyboardButton("✅ Confirmar", callback_data="confirmar_nuevo_mes"),
+        InlineKeyboardButton("❌ Cancelar", callback_data="cancelar_nuevo_mes"),
+    ]]
+    await update.message.reply_text(
+        f"⚠️ Vas a crear el Sheet de *{MESES[mes]} {año}*.\n\n"
+        f"Esto duplicará el Sheet actual, limpiará los datos de JEAN, JOEL y DIANA, "
+        f"y actualizará el bot para usar el nuevo archivo.\n\n"
+        f"¿Confirmas?",
+        parse_mode="Markdown",
+        reply_markup=InlineKeyboardMarkup(keyboard),
+    )
+    return ESPERANDO_CONFIRMACION_MES
+
+
+async def callback_nuevo_mes(update, context):
+    query = update.callback_query
+    await query.answer()
+
+    if query.data == "cancelar_nuevo_mes":
+        await query.edit_message_text("❌ Cancelado.")
+        return
+
+    mes = context.user_data.get("nuevo_mes")
+    año = context.user_data.get("nuevo_año")
+
+    await query.edit_message_text(f"⏳ Creando Sheet {MESES[mes]} {año}...")
+
+    try:
+        resultado = await ejecutar_nuevo_mes(año, mes)
+        await query.edit_message_text(
+            f"✅ *Sheet {resultado['nombre']} creado*\n\n"
+            f"🔗 {resultado['url']}\n\n"
+            f"El bot ya apunta al nuevo archivo. Reiniciando...",
+            parse_mode="Markdown",
+        )
+    except Exception as e:
+        logger.error(f"Error creando nuevo mes: {e}")
+        await query.edit_message_text(f"❌ Error: {str(e)}")
