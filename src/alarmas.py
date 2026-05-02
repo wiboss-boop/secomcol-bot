@@ -11,23 +11,20 @@ import re
 
 logger = logging.getLogger(__name__)
 
-# Mapeo de tipos a precios
 PRECIOS = {
     "INSTALACION":   {"empresa": 66.50, "tecnico": 30.0},
     "INC/MTO/AMP":   {"empresa": 27.30, "tecnico": 14.0},
     "DESMONTAJE":    {"empresa": 21.84, "tecnico": 10.0},
     "TRASLADO":      {"empresa": 85.80, "tecnico": 40.0},
     "INVIABLE":      {"empresa": 14.00, "tecnico": 4.0},
-    "CAMARA":        {"empresa": 8.00,  "tecnico": 4.0},   # por cámara adicional
+    "CAMARA":        {"empresa": 8.00,  "tecnico": 4.0},
 }
 
 TIPO_MAPPING = {
-    # Instalaciones
     "instalacion": "INSTALACION",
     "instalaciones": "INSTALACION",
     "instalación": "INSTALACION",
     "instalaciones ok": "INSTALACION",
-    # Mantenimiento
     "mantenimiento": "INC/MTO/AMP",
     "inc/mto/amp": "INC/MTO/AMP",
     "inc/mtto/ampl": "INC/MTO/AMP",
@@ -36,13 +33,10 @@ TIPO_MAPPING = {
     "ampliacion": "INC/MTO/AMP",
     "reconexión": "INC/MTO/AMP",
     "reconexion": "INC/MTO/AMP",
-    # Desmontaje
     "desmontaje": "DESMONTAJE",
     "desmontaje ok": "DESMONTAJE",
-    # Traslado
     "traslado": "TRASLADO",
     "traslado ok": "TRASLADO",
-    # Inviable
     "inviable": "INVIABLE",
     "cliente rechaza": "INVIABLE",
     "cliente ausente": "INVIABLE",
@@ -61,29 +55,13 @@ def normalizar_tipo(tipo_raw: str) -> str:
     return tipo_raw.upper()
 
 
-def calcular_precios(tipo: str, n_camaras: int = 0, inviable: bool = False) -> dict:
-    if inviable:
-        tipo = "INVIABLE"
-    base = PRECIOS.get(tipo, {"empresa": 0, "tecnico": 0})
-    extra_empresa = n_camaras * PRECIOS["CAMARA"]["empresa"]
-    extra_tecnico = n_camaras * PRECIOS["CAMARA"]["tecnico"]
-    return {
-        "precio_empresa": base["empresa"] + extra_empresa,
-        "precio_tecnico": base["tecnico"] + extra_tecnico,
-    }
-
-
 def extraer_notas_texto(notas: str) -> dict:
-    """Extrae número de cámaras e inviable de la nota de texto del técnico."""
     resultado = {"camaras": 0, "inviable": False, "texto": notas}
     if not notas:
         return resultado
-
     n = notas.lower()
     if "inviable" in n:
         resultado["inviable"] = True
-
-    # Buscar menciones de cámara(s): "una cámara", "2 cámaras", "1 camara"
     match = re.search(r"(\d+|una|dos|tres|cuatro|cinco)\s*c[áa]mara", n)
     if match:
         word_map = {"una": 1, "dos": 2, "tres": 3, "cuatro": 4, "cinco": 5}
@@ -91,14 +69,10 @@ def extraer_notas_texto(notas: str) -> dict:
         resultado["camaras"] = word_map.get(val, int(val) if val.isdigit() else 1)
     elif "cámara" in n or "camara" in n:
         resultado["camaras"] = 1
-
     return resultado
 
 
 async def procesar_screenshot_alarmas(imagen, notas_texto: str, tecnico: str, bot) -> list:
-    """Usa Claude Vision para extraer órdenes del screenshot de ZENER."""
-
-    # Descargar imagen desde Telegram
     file = await bot.get_file(imagen.file_id)
     img_bytes = await file.download_as_bytearray()
     img_b64 = base64.standard_b64encode(img_bytes).decode("utf-8")
@@ -148,36 +122,27 @@ Si hay fecha en el calendario visible en la pantalla úsala para las órdenes si
     )
 
     raw = response.content[0].text.strip()
-    # Limpiar posibles backticks
     raw = raw.replace("```json", "").replace("```", "").strip()
     data = json.loads(raw)
     ordenes_raw = data.get("ordenes", [])
 
-    # Procesar notas de texto (cámaras, inviable) — aplican a orden mencionada
-    # Formato típico: "SC2026185010 una cámara"
     notas_por_orden = {}
     if notas_texto:
         for linea in notas_texto.strip().split("\n"):
             linea = linea.strip()
             if not linea:
                 continue
-            # Buscar código SC al inicio
             match = re.match(r"(SC\d+)\s*(.*)", linea, re.IGNORECASE)
             if match:
                 cod = match.group(1).upper()
                 nota = match.group(2).strip()
                 notas_por_orden[cod] = extraer_notas_texto(nota)
-            else:
-                # Nota sin código → aplica a todas (caso raro)
-                pass
 
-    # Construir lista final
     ordenes = []
     for o in ordenes_raw:
         codigo = o["orden"].upper()
         tipo_norm = normalizar_tipo(o.get("tipo", ""))
         nota = notas_por_orden.get(codigo, {"camaras": 0, "inviable": False})
-        precios = calcular_precios(tipo_norm, nota["camaras"], nota.get("inviable", False))
 
         ordenes.append({
             "orden": codigo,
@@ -185,8 +150,6 @@ Si hay fecha en el calendario visible en la pantalla úsala para las órdenes si
             "fecha": o.get("fecha", ""),
             "camaras": nota["camaras"],
             "inviable": nota.get("inviable", False),
-            "precio_empresa": precios["precio_empresa"],
-            "precio_tecnico": precios["precio_tecnico"],
         })
 
     return ordenes
@@ -206,22 +169,20 @@ def get_sheet():
     sheet_id = os.getenv("GOOGLE_SHEET_ID_ALARMAS")
     return gc.open_by_key(sheet_id)
 
+
 async def confirmar_registro_alarmas(tecnico: str, ordenes: list) -> int:
-    """Escribe las órdenes en el tab del técnico en Google Sheets."""
     wb = get_sheet()
 
     try:
         ws = wb.worksheet(tecnico)
     except gspread.WorksheetNotFound:
-        # Crear tab si no existe
-        ws = wb.add_worksheet(title=tecnico, rows=1000, cols=10)
-        ws.append_row(["FECHA", "ORDEN", "TIPO", "CAMARAS", "INVIABLE", "PRECIO_EMPRESA", "PRECIO_TECNICO", "NOTAS"])
+        ws = wb.add_worksheet(title=tecnico, rows=1000, cols=6)
+        ws.append_row(["FECHA", "ORDEN", "CODIGO", "CAMARAS", "PRECIO", "TECNICO"])
 
-    # Obtener órdenes ya registradas para deduplicar
     registradas = set()
     try:
         existing = ws.get_all_values()
-        for row in existing[1:]:  # skip header
+        for row in existing[1:]:
             if len(row) > 1 and row[1]:
                 registradas.add(row[1].strip().upper())
     except Exception:
@@ -232,15 +193,38 @@ async def confirmar_registro_alarmas(tecnico: str, ordenes: list) -> int:
     for o in ordenes:
         if o["orden"] in registradas:
             continue
+
+        tipo = o["tipo"]
+        if o.get("inviable"):
+            codigo = "ZA_INVIABLE"
+        else:
+            tipo_map = {
+                "INSTALACION": "ZA_INSTALACION",
+                "INC/MTO/AMP": "ZA_INC/MTO/AMP",
+                "DESMONTAJE":  "ZA_DESMONTAJE",
+                "TRASLADO":    "ZA_TRASLADO",
+                "INVIABLE":    "ZA_INVIABLE",
+            }
+            codigo = tipo_map.get(tipo, f"ZA_{tipo}")
+
+        n_camaras = o.get("camaras", 0) or 0
+
+        precio_formula = (
+            f'=IFERROR(BUSCARV("{codigo}",BASE!A:C,2,0),0)'
+            f'+{n_camaras}*IFERROR(BUSCARV("ZA_CAMARA",BASE!A:C,2,0),0)'
+        )
+        tecnico_formula = (
+            f'=IFERROR(BUSCARV("{codigo}",BASE!A:C,3,0),0)'
+            f'+{n_camaras}*IFERROR(BUSCARV("ZA_CAMARA",BASE!A:C,3,0),0)'
+        )
+
         filas.append([
             o.get("fecha", ""),
             o["orden"],
-            o["tipo"],
-            o["camaras"] if o["camaras"] else "",
-            "SI" if o["inviable"] else "",
-            o["precio_empresa"],
-            o["precio_tecnico"],
-            "",  # NOTAS — columna para uso manual futuro
+            codigo,
+            n_camaras if n_camaras else "",
+            precio_formula,
+            tecnico_formula,
         ])
         nuevas += 1
 
