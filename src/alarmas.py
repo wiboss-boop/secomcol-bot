@@ -199,8 +199,7 @@ def get_sheet():
         token_uri="https://oauth2.googleapis.com/token",
         client_id=os.getenv("GOOGLE_CLIENT_ID"),
         client_secret=os.getenv("GOOGLE_CLIENT_SECRET"),
-        scopes=["https://www.googleapis.com/auth/spreadsheets",
-                "https://www.googleapis.com/auth/drive"],
+        scopes=["https://www.googleapis.com/auth/spreadsheets"],
     )
     creds.refresh(Request())
     gc = gspread.authorize(creds)
