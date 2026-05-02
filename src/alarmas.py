@@ -193,17 +193,19 @@ Si hay fecha en el calendario visible en la pantalla úsala para las órdenes si
 
 
 def get_sheet():
-    """Conecta con Google Sheets."""
-    creds_path = os.getenv("GOOGLE_CREDENTIALS_PATH", "config/google_credentials.json")
-    scopes = [
-        "https://www.googleapis.com/auth/spreadsheets",
-        "https://www.googleapis.com/auth/drive",
-    ]
-    creds = Credentials.from_service_account_file(creds_path, scopes=scopes)
+    creds = Credentials(
+        token=None,
+        refresh_token=os.getenv("GOOGLE_REFRESH_TOKEN"),
+        token_uri="https://oauth2.googleapis.com/token",
+        client_id=os.getenv("GOOGLE_CLIENT_ID"),
+        client_secret=os.getenv("GOOGLE_CLIENT_SECRET"),
+        scopes=["https://www.googleapis.com/auth/spreadsheets",
+                "https://www.googleapis.com/auth/drive"],
+    )
+    creds.refresh(Request())
     gc = gspread.authorize(creds)
     sheet_id = os.getenv("GOOGLE_SHEET_ID_ALARMAS")
     return gc.open_by_key(sheet_id)
-
 
 async def confirmar_registro_alarmas(tecnico: str, ordenes: list) -> int:
     """Escribe las órdenes en el tab del técnico en Google Sheets."""
