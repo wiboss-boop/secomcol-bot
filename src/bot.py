@@ -1,5 +1,6 @@
 import logging
 import os
+from datetime import datetime
 from telegram import Update, InlineKeyboardButton, InlineKeyboardMarkup
 from telegram.ext import (
     Application, CommandHandler, MessageHandler,
@@ -7,6 +8,7 @@ from telegram.ext import (
 )
 from dotenv import load_dotenv
 from alarmas import procesar_screenshot_alarmas, confirmar_registro_alarmas
+from nuevo_mes import ejecutar_nuevo_mes, MESES
 
 load_dotenv()
 
@@ -16,182 +18,172 @@ logging.basicConfig(
 )
 logger = logging.getLogger(__name__)
 
-# Estados de conversación
 ESPERANDO_TECNICO, ESPERANDO_SCREENSHOT = range(2)
-
 TECNICOS_ALARMAS = ["JEAN", "JOEL", "DIANA"]
 ALLOWED_USERS = list(map(int, os.getenv("ALLOWED_USERS", "").split(","))) if os.getenv("ALLOWED_USERS") else []
 
 
-def check_auth(user_id: int) -> bool:
+def check_auth(user_id):
     if not ALLOWED_USERS:
-        return True  # Sin restricción si no está configurado
+        return True
     return user_id in ALLOWED_USERS
 
 
-async def start(update: Update, context: ContextTypes.DEFAULT_TYPE):
+async def start(update, context):
     if not check_auth(update.effective_user.id):
         return
     await update.message.reply_text(
-        "👋 *Bot Secomcol*\n\n"
         "Comandos disponibles:\n"
-        "• /alarma — Registrar órdenes de alarmas\n"
-        "• /ayuda — Ver ayuda",
-        parse_mode="Markdown"
+        "- /alarma — Registrar ordenes de alarmas\n"
+        "- /nuevo_mes — Crear sheet del mes siguiente"
     )
 
 
-async def cmd_alarma(update: Update, context: ContextTypes.DEFAULT_TYPE):
+async def cmd_alarma(update, context):
     if not check_auth(update.effective_user.id):
         return
-
-    keyboard = [
-        [InlineKeyboardButton(t, callback_data=f"tecnico_{t}")]
-        for t in TECNICOS_ALARMAS
-    ]
+    keyboard = [[InlineKeyboardButton(t, callback_data="tecnico_" + t)] for t in TECNICOS_ALARMAS]
     await update.message.reply_text(
-        "¿De qué técnico es el screenshot?",
+        "De que tecnico es el screenshot?",
         reply_markup=InlineKeyboardMarkup(keyboard)
     )
     return ESPERANDO_TECNICO
 
 
-async def seleccionar_tecnico(update: Update, context: ContextTypes.DEFAULT_TYPE):
+async def seleccionar_tecnico(update, context):
     query = update.callback_query
     await query.answer()
-
     tecnico = query.data.replace("tecnico_", "")
     context.user_data["tecnico"] = tecnico
-
     await query.edit_message_text(
-        f"✅ Técnico: *{tecnico}*\n\nAhora envía el screenshot de ZENER.\n\n"
-        f"Si hay notas (cámaras adicionales, inviables), "
-        f"escríbelas en el mismo mensaje o en el siguiente.",
-        parse_mode="Markdown"
+        "Tecnico: " + tecnico + "\n\nAhora envia el screenshot de ZENER.\n"
+        "Si hay notas (camaras, inviables) escribelas en el mismo mensaje."
     )
     return ESPERANDO_SCREENSHOT
 
 
-async def recibir_screenshot(update: Update, context: ContextTypes.DEFAULT_TYPE):
+async def recibir_screenshot(update, context):
     if not check_auth(update.effective_user.id):
         return
-
     tecnico = context.user_data.get("tecnico")
     if not tecnico:
         await update.message.reply_text("Usa /alarma para empezar.")
         return ConversationHandler.END
-
-    # Puede llegar imagen, texto, o imagen+texto (caption)
     imagen = None
     notas_texto = ""
-
     if update.message.photo:
-        imagen = update.message.photo[-1]  # Mayor resolución
+        imagen = update.message.photo[-1]
         notas_texto = update.message.caption or ""
     elif update.message.text:
-        # Si manda texto después de la imagen (notas adicionales)
         notas_texto = update.message.text
         imagen = context.user_data.get("ultima_imagen")
-
     if imagen:
         context.user_data["ultima_imagen"] = imagen
-
     if not imagen:
-        await update.message.reply_text(
-            "Por favor envía el screenshot de ZENER."
-        )
+        await update.message.reply_text("Por favor envia el screenshot de ZENER.")
         return ESPERANDO_SCREENSHOT
-
-    await update.message.reply_text("🔍 Analizando screenshot...")
-
+    await update.message.reply_text("Analizando screenshot...")
     try:
         ordenes = await procesar_screenshot_alarmas(
-            imagen=imagen,
-            notas_texto=notas_texto,
-            tecnico=tecnico,
-            bot=context.bot
+            imagen=imagen, notas_texto=notas_texto,
+            tecnico=tecnico, bot=context.bot
         )
-
         if not ordenes:
-            await update.message.reply_text(
-                "No encontré órdenes en la imagen. ¿Es un screenshot de ZENER?"
-            )
+            await update.message.reply_text("No encontre ordenes en la imagen.")
             return ESPERANDO_SCREENSHOT
-
-        # Guardar para confirmación
         context.user_data["ordenes_pendientes"] = ordenes
-
-        # Mostrar resumen para confirmar
-        resumen = f"📋 *{tecnico} — {len(ordenes)} orden(es) encontradas:*\n\n"
+        resumen = tecnico + " - " + str(len(ordenes)) + " orden(es):\n\n"
         for o in ordenes:
-            camara_str = f" 📷 {o['camaras']}" if o.get("camaras") else ""
-            inviable_str = " ❌ INVIABLE" if o.get("inviable") else ""
-            resumen += f"• `{o['orden']}` — {o['tipo']}{camara_str}{inviable_str}\n"
+            cam = " CAM+" + str(o["camaras"]) if o.get("camaras") else ""
+            inv = " INVIABLE" if o.get("inviable") else ""
+            resumen += "- " + o["orden"] + " | " + o["tipo"] + cam + inv + "\n"
             if o.get("fecha"):
-                resumen += f"  📅 {o['fecha']}\n"
-
-        resumen += "\n¿Registrar estas órdenes?"
-
-        keyboard = [
-            [
-                InlineKeyboardButton("✅ Confirmar", callback_data="confirmar_alarmas"),
-                InlineKeyboardButton("❌ Cancelar", callback_data="cancelar_alarmas")
-            ]
-        ]
-        await update.message.reply_text(
-            resumen,
-            parse_mode="Markdown",
-            reply_markup=InlineKeyboardMarkup(keyboard)
-        )
-        return ESPERANDO_TECNICO  # Reutilizamos estado para esperar confirmación
-
+                resumen += "  Fecha: " + o["fecha"] + "\n"
+        resumen += "\nRegistrar estas ordenes?"
+        keyboard = [[
+            InlineKeyboardButton("Confirmar", callback_data="confirmar_alarmas"),
+            InlineKeyboardButton("Cancelar", callback_data="cancelar_alarmas")
+        ]]
+        await update.message.reply_text(resumen, reply_markup=InlineKeyboardMarkup(keyboard))
+        return ESPERANDO_TECNICO
     except Exception as e:
-        logger.error(f"Error procesando screenshot: {e}")
-        await update.message.reply_text(
-            f"❌ Error al procesar la imagen: {str(e)}\nIntenta de nuevo."
-        )
+        logger.error("Error procesando screenshot: " + str(e))
+        await update.message.reply_text("Error al procesar la imagen: " + str(e))
         return ESPERANDO_SCREENSHOT
 
 
-async def confirmar_alarmas(update: Update, context: ContextTypes.DEFAULT_TYPE):
+async def confirmar_alarmas(update, context):
     query = update.callback_query
     await query.answer()
-
     if query.data == "cancelar_alarmas":
-        await query.edit_message_text("❌ Cancelado. Usa /alarma para intentar de nuevo.")
+        await query.edit_message_text("Cancelado.")
         context.user_data.clear()
         return ConversationHandler.END
-
     ordenes = context.user_data.get("ordenes_pendientes", [])
     tecnico = context.user_data.get("tecnico")
-
-    await query.edit_message_text("⏳ Guardando en Google Sheets...")
-
+    await query.edit_message_text("Guardando en Google Sheets...")
     try:
         n = await confirmar_registro_alarmas(tecnico=tecnico, ordenes=ordenes)
+        await query.edit_message_text(str(n) + " orden(es) registradas para " + tecnico)
+    except Exception as e:
+        logger.error("Error guardando alarmas: " + str(e))
+        await query.edit_message_text("Error al guardar: " + str(e))
+    context.user_data.clear()
+    return ConversationHandler.END
+
+
+async def cancelar(update, context):
+    context.user_data.clear()
+    await update.message.reply_text("Operacion cancelada.")
+    return ConversationHandler.END
+
+
+async def cmd_nuevo_mes(update, context):
+    if not check_auth(update.effective_user.id):
+        return
+    now = datetime.now()
+    if now.month == 12:
+        mes, ano = 1, now.year + 1
+    else:
+        mes, ano = now.month + 1, now.year
+    context.user_data["nuevo_mes"] = mes
+    context.user_data["nuevo_ano"] = ano
+    keyboard = [[
+        InlineKeyboardButton("Confirmar", callback_data="confirmar_nuevo_mes"),
+        InlineKeyboardButton("Cancelar", callback_data="cancelar_nuevo_mes"),
+    ]]
+    await update.message.reply_text(
+        "Vas a crear el Sheet de " + MESES[mes] + " " + str(ano) + ".\n\n"
+        "Esto duplicara el Sheet actual, limpiara los datos de JEAN, JOEL y DIANA "
+        "y actualizara el bot para usar el nuevo archivo.\n\nConfirmas?",
+        reply_markup=InlineKeyboardMarkup(keyboard),
+    )
+
+
+async def callback_nuevo_mes(update, context):
+    query = update.callback_query
+    await query.answer()
+    if query.data == "cancelar_nuevo_mes":
+        await query.edit_message_text("Cancelado.")
+        return
+    mes = context.user_data.get("nuevo_mes")
+    ano = context.user_data.get("nuevo_ano")
+    await query.edit_message_text("Creando Sheet " + MESES[mes] + " " + str(ano) + "...")
+    try:
+        resultado = await ejecutar_nuevo_mes(ano, mes)
         await query.edit_message_text(
-            f"✅ *{n} orden(es) registradas* para {tecnico} en Google Sheets.",
-            parse_mode="Markdown"
+            "Sheet " + resultado["nombre"] + " creado.\n\n"
+            "URL: " + resultado["url"]
         )
     except Exception as e:
-        logger.error(f"Error guardando alarmas: {e}")
-        await query.edit_message_text(f"❌ Error al guardar: {str(e)}")
-
-    context.user_data.clear()
-    return ConversationHandler.END
-
-
-async def cancelar(update: Update, context: ContextTypes.DEFAULT_TYPE):
-    context.user_data.clear()
-    await update.message.reply_text("Operación cancelada.")
-    return ConversationHandler.END
+        logger.error("Error creando nuevo mes: " + str(e))
+        await query.edit_message_text("Error: " + str(e))
 
 
 def main():
     token = os.getenv("TELEGRAM_TOKEN")
     if not token:
         raise ValueError("TELEGRAM_TOKEN no configurado")
-
     app = Application.builder().token(token).build()
 
     alarma_conv = ConversationHandler(
@@ -209,6 +201,8 @@ def main():
     )
 
     app.add_handler(CommandHandler("start", start))
+    app.add_handler(CommandHandler("nuevo_mes", cmd_nuevo_mes))
+    app.add_handler(CallbackQueryHandler(callback_nuevo_mes, pattern="^(confirmar|cancelar)_nuevo_mes$"))
     app.add_handler(alarma_conv)
 
     logger.info("Bot iniciado")
@@ -217,64 +211,3 @@ def main():
 
 if __name__ == "__main__":
     main()
-
-
-# ── NUEVO MES ──────────────────────────────────────────────────────────────────
-from nuevo_mes import ejecutar_nuevo_mes, MESES
-from datetime import datetime
-
-ESPERANDO_CONFIRMACION_MES = 10
-
-async def cmd_nuevo_mes(update, context):
-    if not check_auth(update.effective_user.id):
-        return
-    now = datetime.now()
-    # Sugerir el mes siguiente
-    if now.month == 12:
-        mes, año = 1, now.year + 1
-    else:
-        mes, año = now.month + 1, now.year
-
-    context.user_data["nuevo_mes"] = mes
-    context.user_data["nuevo_año"] = año
-
-    from telegram import InlineKeyboardButton, InlineKeyboardMarkup
-    keyboard = [[
-        InlineKeyboardButton("✅ Confirmar", callback_data="confirmar_nuevo_mes"),
-        InlineKeyboardButton("❌ Cancelar", callback_data="cancelar_nuevo_mes"),
-    ]]
-    await update.message.reply_text(
-        f"⚠️ Vas a crear el Sheet de *{MESES[mes]} {año}*.\n\n"
-        f"Esto duplicará el Sheet actual, limpiará los datos de JEAN, JOEL y DIANA, "
-        f"y actualizará el bot para usar el nuevo archivo.\n\n"
-        f"¿Confirmas?",
-        parse_mode="Markdown",
-        reply_markup=InlineKeyboardMarkup(keyboard),
-    )
-    return ESPERANDO_CONFIRMACION_MES
-
-
-async def callback_nuevo_mes(update, context):
-    query = update.callback_query
-    await query.answer()
-
-    if query.data == "cancelar_nuevo_mes":
-        await query.edit_message_text("❌ Cancelado.")
-        return
-
-    mes = context.user_data.get("nuevo_mes")
-    año = context.user_data.get("nuevo_año")
-
-    await query.edit_message_text(f"⏳ Creando Sheet {MESES[mes]} {año}...")
-
-    try:
-        resultado = await ejecutar_nuevo_mes(año, mes)
-        await query.edit_message_text(
-            f"✅ *Sheet {resultado['nombre']} creado*\n\n"
-            f"🔗 {resultado['url']}\n\n"
-            f"El bot ya apunta al nuevo archivo. Reiniciando...",
-            parse_mode="Markdown",
-        )
-    except Exception as e:
-        logger.error(f"Error creando nuevo mes: {e}")
-        await query.edit_message_text(f"❌ Error: {str(e)}")
