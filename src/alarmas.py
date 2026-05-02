@@ -129,6 +129,7 @@ def leer_precios_base(wb):
                     precio = float(row[1].replace("€","").replace(",",".").strip())
                     tecnico = float(row[2].replace("€","").replace(",",".").strip())
                     precios[codigo] = {"precio": precio, "tecnico": tecnico}
+                logger.info("BASE: " + codigo + " p=" + str(precio) + " t=" + str(tecnico))
                 except:
                     pass
     except Exception as e:
