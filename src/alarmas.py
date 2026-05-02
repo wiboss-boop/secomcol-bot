@@ -119,7 +119,7 @@ def get_sheet():
 
 def leer_precios_base(wb):
     precios = {}
-    ws = wb.worksheet("BASE")
+    ws = wb.worksheet("Base")
     rows = ws.get_all_values()
     for row in rows[1:]:
         if len(row) >= 3 and row[0]:
