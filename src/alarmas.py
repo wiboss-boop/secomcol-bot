@@ -167,6 +167,9 @@ async def confirmar_registro_alarmas(tecnico, ordenes):
             tipo_map = {
                 "INSTALACION": "ZA_INSTALACION",
                 "INC/MTO/AMP": "ZA_INC/MTO/AMP",
+            "INCIDENCIA": "ZA_INCIDENCIA",
+            "MANTENIMIENTO": "ZA_MANTENIMIENTO",
+            "AMPLIACION": "ZA_AMPLIACION",
                 "DESMONTAJE": "ZA_DESMONTAJE",
                 "TRASLADO": "ZA_TRASLADO",
                 "INVIABLE": "ZA_INVIABLE",
