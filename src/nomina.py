@@ -39,7 +39,7 @@ def leer_altas(wb, tecnico):
     for row in rows[2:]:
         if len(row) >= 3 and row[1] and row[2]:
             orden, codigo = row[1].strip(), row[2].strip()
-            if not orden or orden == "-" or codigo == "SIN ALTAS":
+            if not orden or orden in ["-", "SECOMCOL"] or codigo in ["SIN ALTAS"] or "€" in codigo:
                 continue
             fecha = row[0].strip() if row[0] else ""
             try:
