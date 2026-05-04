@@ -8,6 +8,7 @@ from telegram.ext import (
 )
 from dotenv import load_dotenv
 from alarmas import procesar_screenshot_alarmas, confirmar_registro_alarmas
+from descuentos import parsear_descuento, registrar_descuento
 from nuevo_mes import ejecutar_nuevo_mes, MESES
 
 load_dotenv()
@@ -180,6 +181,29 @@ async def callback_nuevo_mes(update, context):
         await query.edit_message_text("Error: " + str(e))
 
 
+
+async def manejar_descuento(update, context):
+    if not check_auth(update.effective_user.id):
+        return
+    texto = update.message.text or ""
+    resultado = parsear_descuento(texto)
+    if not resultado:
+        return
+    tecnico = resultado["tecnico"]
+    concepto = resultado["concepto"]
+    monto = resultado["monto"]
+    try:
+        registrar_descuento(tecnico, concepto, monto)
+        await update.message.reply_text(
+            f"Descuento registrado:\n"
+            f"Técnico: {tecnico}\n"
+            f"Concepto: {concepto}\n"
+            f"Monto: {monto} €"
+        )
+    except Exception as e:
+        logger.error("Error registrando descuento: " + str(e))
+        await update.message.reply_text("Error al registrar descuento: " + str(e))
+
 def main():
     token = os.getenv("TELEGRAM_TOKEN")
     if not token:
@@ -204,6 +228,7 @@ def main():
     app.add_handler(CommandHandler("nuevo_mes", cmd_nuevo_mes))
     app.add_handler(CallbackQueryHandler(callback_nuevo_mes, pattern="^(confirmar|cancelar)_nuevo_mes$"))
     app.add_handler(alarma_conv)
+    app.add_handler(MessageHandler(filters.TEXT & ~filters.COMMAND & filters.Regex('(?i)descontar'), manejar_descuento))
 
     logger.info("Bot iniciado")
     app.run_polling(drop_pending_updates=True)
