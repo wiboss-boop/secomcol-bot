@@ -76,7 +76,7 @@ def leer_descuentos(wb, tecnico):
     return desc
 
 def escribir_hoja(ws, tecnico, altas, desc_vars, mes, ano):
-    COL_F, COL_O, COL_C, COL_P = 5, 6, 7, 8
+    COL_F, COL_O, COL_C, COL_P = 1, 2, 3, 4
     font_b = Font(bold=True, name="Arial", size=10)
     font_n = Font(name="Arial", size=10)
     fill_h = PatternFill("solid", start_color="1F4E79", end_color="1F4E79")
@@ -87,17 +87,18 @@ def escribir_hoja(ws, tecnico, altas, desc_vars, mes, ano):
         ws.column_dimensions[get_column_letter(col)].width = w
 
     # Título
-    c = ws.cell(row=25, column=COL_F, value=f"{tecnico} — {mes.upper()} {ano}")
+    c = ws.cell(row=1, column=COL_F, value=f"{tecnico} — {mes.upper()} {ano}")
     c.font = font_w; c.fill = fill_h; c.alignment = Alignment(horizontal="center")
-    ws.merge_cells(start_row=25, start_column=COL_F, end_row=25, end_column=COL_P)
+    ws.merge_cells(start_row=1, start_column=COL_F, end_row=1, end_column=COL_P)
 
     # Cabeceras
+    # cabeceras
     for col, lbl in [(COL_F,"FECHA"),(COL_O,"ORDEN"),(COL_C,"CODIGO"),(COL_P,"TECNICO")]:
-        c = ws.cell(row=26, column=col, value=lbl)
+        c = ws.cell(row=2, column=col, value=lbl)
         c.font = font_w; c.fill = fill_h; c.alignment = Alignment(horizontal="center")
 
     # Altas
-    row = 27
+    row = 3
     first_row = row
     for fecha, orden, codigo, precio in altas:
         ws.cell(row=row, column=COL_F, value=fecha).font = font_n
@@ -115,7 +116,7 @@ def escribir_hoja(ws, tecnico, altas, desc_vars, mes, ano):
 
     # Subtotal altas
     sub_row = row
-    ws.cell(row=row, column=COL_P, value=f"=SUM(H{first_row}:H{last_row})+H{festivos_row}").font = font_b
+    ws.cell(row=row, column=COL_P, value=f"=SUM(D{first_row}:D{last_row})+D{festivos_row}").font = font_b
     row += 2
 
     # DESCUENTOS título
@@ -146,14 +147,14 @@ def escribir_hoja(ws, tecnico, altas, desc_vars, mes, ano):
 
     # SUBTOTAL descuentos
     ws.cell(row=row, column=COL_O, value="SUBTOTAL").font = font_b
-    ws.cell(row=row, column=COL_P, value=f"=SUM(H{desc_start}:H{desc_end})").font = font_b
+    ws.cell(row=row, column=COL_P, value=f"=SUM(D{desc_start}:D{desc_end})").font = font_b
     sub_desc_row = row; row += 2
 
     # TOTAL
     c_l = ws.cell(row=row, column=COL_O, value="TOTAL")
     c_l.font = Font(bold=True, name="Arial", size=12, color="FFFFFF")
     c_l.fill = PatternFill("solid", start_color="1F4E79", end_color="1F4E79")
-    ws.cell(row=row, column=COL_P, value=f"=H{sub_row}-H{sub_desc_row}").font = Font(bold=True, name="Arial", size=12)
+    ws.cell(row=row, column=COL_P, value=f"=D{sub_row}-D{sub_desc_row}").font = Font(bold=True, name="Arial", size=12)
 
 def generar_excel(mes, ano):
     wb_sheet = get_sheet()
