@@ -49,8 +49,14 @@ def leer_altas(wb, tecnico):
             except ValueError:
                 precio = 0
             altas.append([fecha, orden, codigo, precio])
-    print(f"[DEBUG] {tecnico}: {len(altas)} altas, primera={altas[0] if altas else None}")
-    return altas
+    # Deduplicar por orden
+    vistas = set()
+    altas_unicas = []
+    for a in altas:
+        if a[1] not in vistas:
+            vistas.add(a[1])
+            altas_unicas.append(a)
+    return altas_unicas
 
 def leer_descuentos(wb, tecnico):
     try:
