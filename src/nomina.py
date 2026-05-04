@@ -43,7 +43,9 @@ def leer_altas(wb, tecnico):
                 continue
             fecha = row[0].strip() if row[0] else ""
             try:
-                precio = float(row[3].strip()) if len(row) > 3 and row[3] else 0
+                p = row[3].strip() if len(row) > 3 and row[3] else "0"
+                p = p.replace("€","").replace(" ","").replace(",",".")
+                precio = float(p) if p else 0
             except ValueError:
                 precio = 0
             altas.append([fecha, orden, codigo, precio])
