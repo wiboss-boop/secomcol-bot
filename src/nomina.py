@@ -49,6 +49,7 @@ def leer_altas(wb, tecnico):
             except ValueError:
                 precio = 0
             altas.append([fecha, orden, codigo, precio])
+    print(f"[DEBUG] {tecnico}: {len(altas)} altas, primera={altas[0] if altas else None}")
     return altas
 
 def leer_descuentos(wb, tecnico):
