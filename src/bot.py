@@ -9,6 +9,7 @@ from telegram.ext import (
 from dotenv import load_dotenv
 from alarmas import procesar_screenshot_alarmas, confirmar_registro_alarmas
 from descuentos import parsear_descuento, registrar_descuento
+from nomina import generar_excel
 from nuevo_mes import ejecutar_nuevo_mes, MESES
 
 load_dotenv()
@@ -36,7 +37,7 @@ async def start(update, context):
     await update.message.reply_text(
         "Comandos disponibles:\n"
         "- /alarma — Registrar ordenes de alarmas\n"
-        "- /nuevo_mes — Crear sheet del mes siguiente"
+        "- /nuevo_mes — Crear sheet del mes siguiente\n- /nomina [MES] [AÑO] — Generar Excel de nomina"
     )
 
 
@@ -182,6 +183,24 @@ async def callback_nuevo_mes(update, context):
 
 
 
+
+async def cmd_nomina(update, context):
+    if not check_auth(update.effective_user.id):
+        return
+    now = datetime.now()
+    mes = context.args[0] if context.args else now.strftime("%B")
+    ano = context.args[1] if len(context.args) > 1 else str(now.year)
+    await update.message.reply_text(f"Generando nomina {mes} {ano}...")
+    try:
+        nombre = generar_excel(mes, ano)
+        with open(nombre, "rb") as f:
+            await update.message.reply_document(document=f, filename=nombre)
+        import os
+        os.remove(nombre)
+    except Exception as e:
+        logger.error("Error generando nomina: " + str(e))
+        await update.message.reply_text("Error: " + str(e))
+
 async def manejar_descuento(update, context):
     if not check_auth(update.effective_user.id):
         return
@@ -228,6 +247,7 @@ def main():
     app.add_handler(CommandHandler("nuevo_mes", cmd_nuevo_mes))
     app.add_handler(CallbackQueryHandler(callback_nuevo_mes, pattern="^(confirmar|cancelar)_nuevo_mes$"))
     app.add_handler(alarma_conv)
+    app.add_handler(CommandHandler('nomina', cmd_nomina))
     app.add_handler(MessageHandler(filters.TEXT & ~filters.COMMAND & filters.Regex('(?i)descontar'), manejar_descuento))
 
     logger.info("Bot iniciado")
