@@ -7,6 +7,7 @@ from google.oauth2.credentials import Credentials
 from google.auth.transport.requests import Request
 import logging
 import re
+import unicodedata
 
 logger = logging.getLogger(__name__)
 
@@ -37,11 +38,18 @@ def normalizar_tipo(tipo_raw):
             return val
     return tipo_raw.upper()
 
+def normalizar_texto(texto):
+    """Quita acentos y normaliza para comparación."""
+    return ''.join(
+        c for c in unicodedata.normalize('NFD', texto)
+        if unicodedata.category(c) != 'Mn'
+    )
+
 def extraer_notas_texto(notas):
     resultado = {"camaras": 0, "inviable": False}
     if not notas:
         return resultado
-    n = notas.lower()
+    n = normalizar_texto(notas.lower())
     if "inviable" in n:
         resultado["inviable"] = True
     match = re.search(r"(\d+|una|dos|tres|cuatro|cinco)\s*c[aa]mara", n)
