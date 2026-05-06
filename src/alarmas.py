@@ -15,6 +15,9 @@ TIPO_MAPPING = {
     "instalacion": "INSTALACION",
     "instalaciones": "INSTALACION",
     "instalacion ok": "INSTALACION",
+    "incidencia": "INCIDENCIAS",
+    "incidencias": "INCIDENCIAS",
+    "incidencia ok": "INCIDENCIAS",
     "mantenimiento": "INC/MTO/AMP",
     "mantenimiento ok": "INC/MTO/AMP",
     "ampliacion": "INC/MTO/AMP",
@@ -131,10 +134,11 @@ def leer_precios_base(wb):
     rows = ws.get_all_values()
     for row in rows[1:]:
         if len(row) >= 3 and row[0]:
-            codigo = row[0].strip()
+            codigo = row[0].strip().replace("\xa0", "").replace("\u00a0", "")
             try:
-                p = float(row[1].replace("€","").replace(" ","").replace(",",".").strip())
-                t = float(row[2].replace("€","").replace(" ","").replace(",",".").strip())
+                def _limpiar(v): return v.replace("€","").replace(" ","").replace("\xa0","").replace("\u00a0","").replace(",",".").strip()
+                p = float(_limpiar(row[1]))
+                t = float(_limpiar(row[2]))
                 precios[codigo] = {"precio": p, "tecnico": t}
                 logger.info("BASE leido: " + codigo + " p=" + str(p) + " t=" + str(t))
             except Exception as e:
@@ -166,10 +170,11 @@ async def confirmar_registro_alarmas(tecnico, ordenes):
         else:
             tipo_map = {
                 "INSTALACION": "ZA_INSTALACION",
+                "INCIDENCIAS": "ZA_INCIDENCIAS",
+                "INCIDENCIA": "ZA_INCIDENCIAS",
                 "INC/MTO/AMP": "ZA_INC/MTO/AMP",
-            "INCIDENCIA": "ZA_INCIDENCIA",
-            "MANTENIMIENTO": "ZA_MANTENIMIENTO",
-            "AMPLIACION": "ZA_AMPLIACION",
+                "MANTENIMIENTO": "ZA_INC/MTO/AMP",
+                "AMPLIACION": "ZA_INC/MTO/AMP",
                 "DESMONTAJE": "ZA_DESMONTAJE",
                 "TRASLADO": "ZA_TRASLADO",
                 "INVIABLE": "ZA_INVIABLE",
