@@ -71,9 +71,9 @@ async def procesar_screenshot_alarmas(imagen, notas_texto, tecnico, bot):
     client = anthropic.Anthropic(api_key=os.getenv("ANTHROPIC_API_KEY"))
     prompt = (
         "Analiza este screenshot de la app ZENER de instalaciones de alarmas. "
-        "Extrae TODAS las ordenes completadas (con checkmark verde). "
+        "Extrae TODAS las ordenes visibles, tengan o no checkmark verde. Incluye ordenes con circulo naranja, icono de lapiz, o cualquier estado. "
         "Cada orden tiene un codigo SC seguido de numeros, un tipo entre parentesis "
-        "(Instalaciones, Mantenimiento, Desmontaje, Traslado) y una fecha o hora. "
+        "(Instalaciones, Incidencias, Mantenimiento, Desmontaje, Traslado) y una fecha o hora. "
         "Devuelve SOLO un JSON sin texto adicional con esta estructura: "
         '{"ordenes": [{"orden": "SC2026185010", "tipo": "Instalaciones", '
         '"fecha": "30/04/2026", "completada": true}]}. '
