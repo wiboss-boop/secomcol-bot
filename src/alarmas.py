@@ -90,8 +90,16 @@ async def procesar_screenshot_alarmas(imagen, notas_texto, tecnico, bot):
     raw = response.content[0].text.strip().replace("```json", "").replace("```", "").strip()
     data = json.loads(raw)
     ordenes_raw = data.get("ordenes", [])
+    # Detectar inviable/camara globales en caption sin codigo SC
+    caption_norm = normalizar_texto((notas_texto or "").lower())
+    tiene_codigo_sc = bool(re.search(r"SC\d+", notas_texto or "", re.IGNORECASE))
+    inviable_global = "inviable" in caption_norm and not tiene_codigo_sc
+    camaras_global = 0
+    if not tiene_codigo_sc and notas_texto:
+        camaras_global = extraer_notas_texto(notas_texto)["camaras"]
+
     notas_por_orden = {}
-    if notas_texto:
+    if notas_texto and tiene_codigo_sc:
         for linea in notas_texto.strip().split("\n"):
             linea = linea.strip()
             if not linea:
@@ -109,8 +117,8 @@ async def procesar_screenshot_alarmas(imagen, notas_texto, tecnico, bot):
             "orden": codigo,
             "tipo": tipo_norm,
             "fecha": o.get("fecha", ""),
-            "camaras": nota["camaras"],
-            "inviable": nota.get("inviable", False),
+            "camaras": nota["camaras"] or camaras_global,
+            "inviable": nota.get("inviable", False) or inviable_global,
         })
     return ordenes
 
