@@ -94,7 +94,6 @@ async def procesar_screenshot_alarmas(imagen, notas_texto, tecnico, bot):
     caption_norm = normalizar_texto((notas_texto or "").lower())
     tiene_codigo_sc = bool(re.search(r"SC\d+", notas_texto or "", re.IGNORECASE))
     inviable_global = "inviable" in caption_norm and not tiene_codigo_sc
-    logger.info("DEBUG caption_norm=" + repr(caption_norm) + " tiene_sc=" + str(tiene_codigo_sc) + " inviable_global=" + str(inviable_global))
     camaras_global = 0
     if not tiene_codigo_sc and notas_texto:
         camaras_global = extraer_notas_texto(notas_texto)["camaras"]
