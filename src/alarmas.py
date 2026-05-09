@@ -128,7 +128,13 @@ def get_sheet():
         raise ValueError("GOOGLE_SERVICE_ACCOUNT_JSON no definida")
     info = json.loads(sa_json)
     gc = gspread.service_account_from_dict(info)
-    return gc.open_by_key(os.getenv("GOOGLE_SHEET_ID_ALARMAS"))
+    sheet_id = os.getenv("GOOGLE_SHEET_ID_ALARMAS")
+    logger.info(f"Abriendo sheet: {sheet_id}, email: {info.get('client_email')}")
+    try:
+        return gc.open_by_key(sheet_id)
+    except Exception as ex:
+        logger.error(f"Error abriendo sheet: {type(ex).__name__}: {ex}")
+        raise
 
 def leer_precios_base(wb):
     precios = {}
