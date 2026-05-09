@@ -201,5 +201,8 @@ async def confirmar_registro_alarmas(tecnico, ordenes):
                 filas.append([fecha, orden, "ZA_CAMARA", p_cam["precio"], p_cam["tecnico"]])
                 nuevas += 1
     if filas:
-        ws.append_rows(filas, value_input_option="USER_ENTERED")
+        # Encontrar primera fila vacía real (después del encabezado)
+        all_values = ws.get_all_values()
+        primera_vacia = len(all_values) + 1
+        ws.insert_rows(filas, row=primera_vacia, value_input_option="USER_ENTERED")
     return nuevas
