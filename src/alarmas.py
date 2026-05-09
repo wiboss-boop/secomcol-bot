@@ -123,16 +123,16 @@ async def procesar_screenshot_alarmas(imagen, notas_texto, tecnico, bot):
     return ordenes
 
 def get_sheet():
-    creds = Credentials(
-        token=None,
-        refresh_token=os.getenv("GOOGLE_REFRESH_TOKEN"),
-        token_uri="https://oauth2.googleapis.com/token",
-        client_id=os.getenv("GOOGLE_CLIENT_ID"),
-        client_secret=os.getenv("GOOGLE_CLIENT_SECRET"),
+    from google.oauth2.service_account import Credentials as SACredentials
+    sa_json = os.getenv("GOOGLE_SERVICE_ACCOUNT_JSON")
+    if not sa_json:
+        raise ValueError("GOOGLE_SERVICE_ACCOUNT_JSON no definida")
+    info = json.loads(sa_json)
+    creds = SACredentials.from_service_account_info(
+        info,
         scopes=["https://www.googleapis.com/auth/spreadsheets",
                 "https://www.googleapis.com/auth/drive"],
     )
-    creds.refresh(Request())
     gc = gspread.authorize(creds)
     return gc.open_by_key(os.getenv("GOOGLE_SHEET_ID_ALARMAS"))
 
