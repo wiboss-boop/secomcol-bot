@@ -129,8 +129,9 @@ async def confirmar_alarmas(update, context):
         await query.edit_message_text(str(n) + " orden(es) registradas para " + tecnico)
     except Exception as e:
         import traceback
-        logger.error("Error guardando alarmas: " + str(e) + "\n" + traceback.format_exc())
-        await query.edit_message_text("Error al guardar: " + str(e))
+        tb = traceback.format_exc()
+        logger.error("Error guardando alarmas: " + str(e) + "\n" + tb)
+        await query.edit_message_text("Error al guardar: " + repr(e) + "\n" + tb[-500:])
     context.user_data.clear()
     return ConversationHandler.END
 
