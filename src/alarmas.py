@@ -133,7 +133,7 @@ def get_sheet():
     try:
         return gc.open_by_key(sheet_id)
     except Exception as ex:
-        logger.error(f"Error abriendo sheet: {type(ex).__name__}: {ex}")
+        logger.error(f"Error abriendo sheet: {type(ex).__name__}: {ex} | causa: {ex.__cause__}")
         raise
 
 def leer_precios_base(wb):
