@@ -1,1 +1,1 @@
-web: python start.py
+web: PYTHONPATH=/app/src python src/bot.py
