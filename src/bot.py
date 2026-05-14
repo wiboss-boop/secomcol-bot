@@ -272,4 +272,13 @@ def main() -> None:
 
 
 if __name__ == "__main__":
-    main()
+    import time
+    from telegram.error import Conflict
+    for attempt in range(10):
+        try:
+            main()
+            break
+        except Conflict:
+            wait = 10 * (attempt + 1)
+            logger.warning(f"Conflict con otra instancia, reintentando en {wait}s (intento {attempt + 1}/10)")
+            time.sleep(wait)
