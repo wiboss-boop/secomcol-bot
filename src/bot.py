@@ -253,7 +253,16 @@ def main() -> None:
                 MessageHandler(filters.ALL, timeout_alarma),
             ],
         },
-        fallbacks=[CommandHandler("cancelar", cancelar)],
+        fallbacks=[
+            CommandHandler("cancelar", cancelar),
+            CommandHandler("start", start),
+            CommandHandler("nomina", cmd_nomina),
+            CommandHandler("nuevo_mes", cmd_nuevo_mes),
+            MessageHandler(
+                filters.TEXT & ~filters.COMMAND & filters.Regex("(?i)descontar"),
+                manejar_descuento,
+            ),
+        ],
         conversation_timeout=300,
     )
 
