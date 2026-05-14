@@ -33,9 +33,14 @@ def _leer_altas(wb: gspread.Spreadsheet, tecnico: str) -> list:
         rows = wb.worksheet(tecnico).get_all_values()
     except Exception:
         return []
+    start = 1
+    for i, row in enumerate(rows):
+        if len(row) > 1 and row[1].strip().upper() == "ORDEN":
+            start = i + 1
+            break
     altas = []
     vistas: set[str] = set()
-    for row in rows[2:]:
+    for row in rows[start:]:
         if len(row) < 3 or not row[1] or not row[2]:
             continue
         orden, codigo = row[1].strip(), row[2].strip()

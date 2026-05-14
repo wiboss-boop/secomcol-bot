@@ -1,15 +1,18 @@
-import os
-import json
 import base64
-import anthropic
-import gspread
-from google.oauth2.credentials import Credentials
-from google.auth.transport.requests import Request
+import json
 import logging
+import os
 import re
 import unicodedata
 
+import anthropic
+import gspread
+
+from sheets import get_sheet
+
 logger = logging.getLogger(__name__)
+
+_client = anthropic.AsyncAnthropic(api_key=os.getenv("ANTHROPIC_API_KEY"))
 
 TIPO_MAPPING = {
     "instalacion": "INSTALACION",
@@ -34,25 +37,50 @@ TIPO_MAPPING = {
     "cliente solicita cambio": "INVIABLE",
 }
 
-def normalizar_tipo(tipo_raw):
+CODIGO_POR_TIPO = {
+    "INSTALACION": "ZA_INSTALACION",
+    "INCIDENCIAS": "ZA_INCIDENCIAS",
+    "INCIDENCIA": "ZA_INCIDENCIAS",
+    "INC/MTO/AMP": "ZA_INC/MTO/AMP",
+    "MANTENIMIENTO": "ZA_INC/MTO/AMP",
+    "AMPLIACION": "ZA_INC/MTO/AMP",
+    "DESMONTAJE": "ZA_DESMONTAJE",
+    "TRASLADO": "ZA_TRASLADO",
+    "INVIABLE": "ZA_INVIABLE",
+}
+
+_PROMPT_ZENER = (
+    "Analiza este screenshot de la app ZENER de instalaciones de alarmas. "
+    "Extrae TODAS las ordenes visibles, tengan o no checkmark verde. Incluye ordenes con circulo naranja, icono de lapiz, o cualquier estado. "
+    "Cada orden tiene un codigo SC seguido de numeros, un tipo entre parentesis "
+    "(Instalaciones, Incidencias, Mantenimiento, Desmontaje, Traslado) y una fecha o hora. "
+    "Devuelve SOLO un JSON sin texto adicional con esta estructura: "
+    '{"ordenes": [{"orden": "SC2026185010", "tipo": "Instalaciones", '
+    '"fecha": "30/04/2026", "completada": true}]}. '
+    "Si hay fecha en el calendario usala para las ordenes sin fecha explicita."
+)
+
+
+def _normalizar_tipo(tipo_raw: str) -> str:
     t = tipo_raw.lower().strip()
     for key, val in TIPO_MAPPING.items():
         if key in t:
             return val
     return tipo_raw.upper()
 
-def normalizar_texto(texto):
-    """Quita acentos y normaliza para comparación."""
-    return ''.join(
-        c for c in unicodedata.normalize('NFD', texto)
-        if unicodedata.category(c) != 'Mn'
+
+def _normalizar_texto(texto: str) -> str:
+    return "".join(
+        c for c in unicodedata.normalize("NFD", texto)
+        if unicodedata.category(c) != "Mn"
     )
 
-def extraer_notas_texto(notas):
+
+def _extraer_notas(notas: str) -> dict:
     resultado = {"camaras": 0, "inviable": False}
     if not notas:
         return resultado
-    n = normalizar_texto(notas.lower())
+    n = _normalizar_texto(notas.lower())
     if "inviable" in n:
         resultado["inviable"] = True
     match = re.search(r"(\d+|una|dos|tres|cuatro|cinco)\s*c[aa]mara", n)
@@ -64,145 +92,90 @@ def extraer_notas_texto(notas):
         resultado["camaras"] = 1
     return resultado
 
-async def procesar_screenshot_alarmas(imagen, notas_texto, tecnico, bot):
-    file = await bot.get_file(imagen.file_id)
-    img_bytes = await file.download_as_bytearray()
-    img_b64 = base64.standard_b64encode(img_bytes).decode("utf-8")
-    client = anthropic.Anthropic(api_key=os.getenv("ANTHROPIC_API_KEY"))
-    prompt = (
-        "Analiza este screenshot de la app ZENER de instalaciones de alarmas. "
-        "Extrae TODAS las ordenes visibles, tengan o no checkmark verde. Incluye ordenes con circulo naranja, icono de lapiz, o cualquier estado. "
-        "Cada orden tiene un codigo SC seguido de numeros, un tipo entre parentesis "
-        "(Instalaciones, Incidencias, Mantenimiento, Desmontaje, Traslado) y una fecha o hora. "
-        "Devuelve SOLO un JSON sin texto adicional con esta estructura: "
-        '{"ordenes": [{"orden": "SC2026185010", "tipo": "Instalaciones", '
-        '"fecha": "30/04/2026", "completada": true}]}. '
-        "Si hay fecha en el calendario usala para las ordenes sin fecha explicita."
-    )
-    response = client.messages.create(
-        model="claude-opus-4-5",
+
+async def procesar_screenshot_alarmas(imagen, notas_texto: str, tecnico: str, bot) -> list[dict]:
+    img_bytes = await (await bot.get_file(imagen.file_id)).download_as_bytearray()
+    img_b64 = base64.standard_b64encode(img_bytes).decode()
+
+    response = await _client.messages.create(
+        model="claude-sonnet-4-6",
         max_tokens=1000,
         messages=[{"role": "user", "content": [
             {"type": "image", "source": {"type": "base64", "media_type": "image/jpeg", "data": img_b64}},
-            {"type": "text", "text": prompt}
-        ]}]
+            {"type": "text", "text": _PROMPT_ZENER},
+        ]}],
     )
-    raw = response.content[0].text.strip().replace("```json", "").replace("```", "").strip()
-    data = json.loads(raw)
-    ordenes_raw = data.get("ordenes", [])
-    # Detectar inviable/camara globales en caption sin codigo SC
-    caption_norm = normalizar_texto((notas_texto or "").lower())
-    tiene_codigo_sc = bool(re.search(r"SC\d+", notas_texto or "", re.IGNORECASE))
-    inviable_global = "inviable" in caption_norm and not tiene_codigo_sc
-    camaras_global = 0
-    if not tiene_codigo_sc and notas_texto:
-        camaras_global = extraer_notas_texto(notas_texto)["camaras"]
+    raw = response.content[0].text.strip().removeprefix("```json").removesuffix("```").strip()
+    ordenes_raw = json.loads(raw).get("ordenes", [])
 
-    notas_por_orden = {}
-    if notas_texto and tiene_codigo_sc:
-        for linea in notas_texto.strip().split("\n"):
+    notas_norm = _normalizar_texto((notas_texto or "").lower())
+    tiene_sc = bool(re.search(r"SC\d+", notas_texto or "", re.IGNORECASE))
+    inviable_global = "inviable" in notas_norm and not tiene_sc
+    camaras_global = _extraer_notas(notas_texto)["camaras"] if notas_texto and not tiene_sc else 0
+
+    notas_por_orden: dict[str, dict] = {}
+    if notas_texto and tiene_sc:
+        for linea in notas_texto.strip().splitlines():
             linea = linea.strip()
-            if not linea:
-                continue
-            match = re.match(r"(SC\d+)\s*(.*)", linea, re.IGNORECASE)
-            if match:
-                cod = match.group(1).upper()
-                notas_por_orden[cod] = extraer_notas_texto(match.group(2).strip())
+            m = re.match(r"(SC\d+)\s*(.*)", linea, re.IGNORECASE)
+            if m:
+                notas_por_orden[m.group(1).upper()] = _extraer_notas(m.group(2).strip())
+
     ordenes = []
     for o in ordenes_raw:
         codigo = o["orden"].upper()
-        tipo_norm = normalizar_tipo(o.get("tipo", ""))
         nota = notas_por_orden.get(codigo, {"camaras": 0, "inviable": False})
         ordenes.append({
             "orden": codigo,
-            "tipo": tipo_norm,
+            "tipo": _normalizar_tipo(o.get("tipo", "")),
             "fecha": o.get("fecha", ""),
             "camaras": nota["camaras"] or camaras_global,
             "inviable": nota.get("inviable", False) or inviable_global,
         })
     return ordenes
 
-def get_sheet():
-    sa_json = os.getenv("GOOGLE_SERVICE_ACCOUNT_JSON")
-    if not sa_json:
-        raise ValueError("GOOGLE_SERVICE_ACCOUNT_JSON no definida")
-    info = json.loads(sa_json)
-    gc = gspread.service_account_from_dict(info)
-    sheet_id = os.getenv("GOOGLE_SHEET_ID_ALARMAS")
-    logger.info(f"Abriendo sheet: {sheet_id}, email: {info.get('client_email')}")
-    try:
-        return gc.open_by_key(sheet_id)
-    except Exception as ex:
-        logger.error(f"Error abriendo sheet: {type(ex).__name__}: {ex} | causa: {ex.__cause__}")
-        raise
 
-def leer_precios_base(wb):
+def _limpiar_precio(v: str) -> float:
+    return float(v.replace("€", "").replace("\xa0", "").replace(" ", "").replace(",", ".").strip() or "0")
+
+
+def _leer_precios_base(wb: gspread.Spreadsheet) -> dict:
     precios = {}
-    ws = wb.worksheet("Base")
-    rows = ws.get_all_values()
-    for row in rows[1:]:
+    for row in wb.worksheet("Base").get_all_values()[1:]:
         if len(row) >= 3 and row[0]:
-            codigo = row[0].strip().replace("\xa0", "").replace("\u00a0", "")
+            codigo = row[0].strip().replace("\xa0", "")
             try:
-                def _limpiar(v): return v.replace("€","").replace(" ","").replace("\xa0","").replace("\u00a0","").replace(",",".").strip()
-                p = float(_limpiar(row[1]))
-                t = float(_limpiar(row[2]))
-                precios[codigo] = {"precio": p, "tecnico": t}
-                logger.info("BASE leido: " + codigo + " p=" + str(p) + " t=" + str(t))
+                precios[codigo] = {"precio": _limpiar_precio(row[1]), "tecnico": _limpiar_precio(row[2])}
             except Exception as e:
-                logger.warning("BASE error en " + codigo + ": " + str(e))
+                logger.warning(f"BASE error en {codigo}: {e}")
     return precios
 
-async def confirmar_registro_alarmas(tecnico, ordenes):
+
+async def confirmar_registro_alarmas(tecnico: str, ordenes: list[dict]) -> int:
     wb = get_sheet()
-    precios_base = leer_precios_base(wb)
+    precios_base = _leer_precios_base(wb)
+
     try:
         ws = wb.worksheet(tecnico)
     except gspread.WorksheetNotFound:
         ws = wb.add_worksheet(title=tecnico, rows=1000, cols=5)
         ws.append_row(["FECHA", "ORDEN", "CODIGO", "PRECIO", "TECNICO"])
-    registradas = set()
-    try:
-        existing = ws.get_all_values()
-        for row in existing[1:]:
-            if len(row) >= 3 and row[1]:
-                registradas.add((row[1].strip().upper(), row[2].strip().upper()))
-    except Exception:
-        pass
+
+    existing = ws.get_all_values()
+    registradas = {(r[1].strip().upper(), r[2].strip().upper()) for r in existing[1:] if len(r) >= 3 and r[1]}
+
     filas = []
-    nuevas = 0
     for o in ordenes:
-        tipo = o["tipo"]
-        if o.get("inviable"):
-            codigo_base = "ZA_INVIABLE"
-        else:
-            tipo_map = {
-                "INSTALACION": "ZA_INSTALACION",
-                "INCIDENCIAS": "ZA_INCIDENCIAS",
-                "INCIDENCIA": "ZA_INCIDENCIAS",
-                "INC/MTO/AMP": "ZA_INC/MTO/AMP",
-                "MANTENIMIENTO": "ZA_INC/MTO/AMP",
-                "AMPLIACION": "ZA_INC/MTO/AMP",
-                "DESMONTAJE": "ZA_DESMONTAJE",
-                "TRASLADO": "ZA_TRASLADO",
-                "INVIABLE": "ZA_INVIABLE",
-            }
-            codigo_base = tipo_map.get(tipo, "ZA_" + tipo)
-        fecha = o.get("fecha", "")
-        orden = o["orden"]
-        n_camaras = o.get("camaras", 0) or 0
+        codigo_base = "ZA_INVIABLE" if o.get("inviable") else CODIGO_POR_TIPO.get(o["tipo"], f"ZA_{o['tipo']}")
         p = precios_base.get(codigo_base, {"precio": 0, "tecnico": 0})
-        if (orden, codigo_base) not in registradas:
-            filas.append([fecha, orden, codigo_base, p["precio"], p["tecnico"]])
-            nuevas += 1
+        if (o["orden"], codigo_base) not in registradas:
+            filas.append([o.get("fecha", ""), o["orden"], codigo_base, p["precio"], p["tecnico"]])
         p_cam = precios_base.get("ZA_CAMARA", {"precio": 0, "tecnico": 0})
-        for _ in range(n_camaras):
-            if (orden, "ZA_CAMARA") not in registradas:
-                filas.append([fecha, orden, "ZA_CAMARA", p_cam["precio"], p_cam["tecnico"]])
-                nuevas += 1
+        for _ in range(o.get("camaras", 0) or 0):
+            if (o["orden"], "ZA_CAMARA") not in registradas:
+                filas.append([o.get("fecha", ""), o["orden"], "ZA_CAMARA", p_cam["precio"], p_cam["tecnico"]])
+
     if filas:
-        # Encontrar primera fila vacía real (después del encabezado)
-        all_values = ws.get_all_values()
-        primera_vacia = len(all_values) + 1
+        primera_vacia = len(existing) + 1
         ws.insert_rows(filas, row=primera_vacia, value_input_option="USER_ENTERED")
-    return nuevas
+    return len(filas)
