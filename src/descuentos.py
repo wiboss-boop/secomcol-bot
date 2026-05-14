@@ -1,6 +1,7 @@
 import logging
 import os
 import re
+import unicodedata
 from datetime import datetime
 
 import gspread
@@ -15,8 +16,12 @@ TECNICOS = [
 ]
 
 
+def _sin_acentos(s: str) -> str:
+    return "".join(c for c in unicodedata.normalize("NFD", s) if unicodedata.category(c) != "Mn")
+
+
 def parsear_descuento(texto: str) -> dict | None:
-    t = texto.lower().strip()
+    t = _sin_acentos(texto.lower().strip())
     if "descontar" not in t:
         return None
 
@@ -25,11 +30,11 @@ def parsear_descuento(texto: str) -> dict | None:
         return None
     monto = float(monto_match.group(1).replace(",", "."))
 
-    tecnico = next((tec for tec in TECNICOS if tec.lower() in t), None)
+    tecnico = next((tec for tec in TECNICOS if _sin_acentos(tec.lower()) in t), None)
     if not tecnico:
         return None
 
-    concepto_match = re.search(r"\bde\s+(.+)$", t)
+    concepto_match = re.search(r"\bde\s+(.+?)(?:\s+a\s+\w+)?$", t)
     concepto = concepto_match.group(1).strip().upper() if concepto_match else "DESCUENTO"
 
     return {"tecnico": tecnico, "monto": monto, "concepto": concepto}

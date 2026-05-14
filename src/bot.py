@@ -214,13 +214,9 @@ async def cmd_nomina(update: Update, context: ContextTypes.DEFAULT_TYPE) -> None
 
 
 async def manejar_descuento(update: Update, context: ContextTypes.DEFAULT_TYPE) -> None:
-    uid = update.effective_user.id if update.effective_user else None
-    logger.info(f"manejar_descuento invocado uid={uid} texto={update.message.text!r}")
-    if not check_auth(uid):
-        logger.warning(f"Usuario {uid} no autorizado")
+    if not check_auth(update.effective_user.id):
         return
     resultado = parsear_descuento(update.message.text or "")
-    logger.info(f"parsear_descuento resultado={resultado}")
     if not resultado:
         await update.message.reply_text("No entendí el descuento. Formato: descontar 50 de gasolina a Cristian")
         return
