@@ -87,7 +87,7 @@ def _extraer_notas(notas: str) -> dict:
     if match:
         word_map = {"una": 1, "dos": 2, "tres": 3, "cuatro": 4, "cinco": 5}
         val = match.group(1)
-        resultado["camaras"] = word_map.get(val, int(val) if val.isdigit() else 1)
+        resultado["camaras"] = min(word_map.get(val, int(val) if val.isdigit() else 1), 10)
     elif "camara" in n:
         resultado["camaras"] = 1
     return resultado
@@ -171,9 +171,11 @@ async def confirmar_registro_alarmas(tecnico: str, ordenes: list[dict]) -> int:
         if (o["orden"], codigo_base) not in registradas:
             filas.append([o.get("fecha", ""), o["orden"], codigo_base, p["precio"], p["tecnico"]])
         p_cam = precios_base.get("ZA_CAMARA", {"precio": 0, "tecnico": 0})
-        for _ in range(o.get("camaras", 0) or 0):
-            if (o["orden"], "ZA_CAMARA") not in registradas:
-                filas.append([o.get("fecha", ""), o["orden"], "ZA_CAMARA", p_cam["precio"], p_cam["tecnico"]])
+        camaras_existentes = sum(1 for (ord_, cod_) in registradas if ord_ == o["orden"] and cod_ == "ZA_CAMARA")
+        camaras_a_agregar = max(0, (o.get("camaras", 0) or 0) - camaras_existentes)
+        for _ in range(camaras_a_agregar):
+            filas.append([o.get("fecha", ""), o["orden"], "ZA_CAMARA", p_cam["precio"], p_cam["tecnico"]])
+            registradas.add((o["orden"], "ZA_CAMARA"))
 
     if filas:
         primera_vacia = len(existing) + 1
