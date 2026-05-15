@@ -136,7 +136,7 @@ async def procesar_screenshot_alarmas(imagen, notas_texto: str, tecnico: str, bo
 
 
 def _limpiar_precio(v: str) -> float:
-    return float(v.replace("€", "").replace("\xa0", "").replace(" ", "").replace(",", ".").strip() or "0")
+    return float(v.replace("€", "").replace("$", "").replace("\xa0", "").replace(" ", "").replace(",", ".").strip() or "0")
 
 
 def _leer_precios_base(wb: gspread.Spreadsheet) -> dict:
