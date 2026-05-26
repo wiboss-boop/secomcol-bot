@@ -10,7 +10,7 @@ from sheets import get_sheet
 
 TECNICOS = [
     "CRISTIAN", "MARTIN", "ALVARO", "YOHAN", "ERCS",
-    "HANS", "DIEGO", "LUIS E", "JEAN", "JOEL", "DIANA",
+    "HANS", "DIEGO", "LUIS E", "JEAN", "JOEL", "DIANA", "AYMAN",
 ]
 DESCUENTOS_FIJOS = [
     "ALTAS EN GARANTIA", "REUTILIZADAS GARANTIA",
