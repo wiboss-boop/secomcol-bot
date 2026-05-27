@@ -178,6 +178,5 @@ async def confirmar_registro_alarmas(tecnico: str, ordenes: list[dict]) -> int:
             registradas.add((o["orden"], "ZA_CAMARA"))
 
     if filas:
-        primera_vacia = len(existing) + 1
-        ws.insert_rows(filas, row=primera_vacia, value_input_option="USER_ENTERED")
+        ws.append_rows(filas, value_input_option="USER_ENTERED")
     return len(filas)
