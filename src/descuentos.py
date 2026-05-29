@@ -12,7 +12,7 @@ logger = logging.getLogger(__name__)
 
 TECNICOS = [
     "CRISTIAN", "MARTIN", "ALVARO", "YOHAN", "ERCS",
-    "HANS", "DIEGO", "LUIS E", "JEAN", "JOEL", "DIANA", "AYMAN",
+    "HANS", "LUIS E", "JEAN", "JOEL", "DIANA", "AYMAN", "JAMES",
 ]
 
 
