@@ -161,8 +161,8 @@ async def cmd_nuevo_mes(update: Update, context: ContextTypes.DEFAULT_TYPE) -> N
     if not check_auth(update.effective_user.id):
         return
     now = datetime.now()
-    mes = 1 if now.month == 12 else now.month + 1
-    ano = now.year + 1 if now.month == 12 else now.year
+    mes = now.month
+    ano = now.year
     context.user_data["nuevo_mes"] = mes
     context.user_data["nuevo_ano"] = ano
     keyboard = [[
