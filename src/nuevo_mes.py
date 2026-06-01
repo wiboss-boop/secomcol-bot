@@ -2,7 +2,7 @@ import logging
 import os
 from datetime import datetime
 import httpx
-from sheets import get_sheet
+from sheets import get_sheet, get_access_token
 
 logger = logging.getLogger(__name__)
 
@@ -14,9 +14,20 @@ MESES = {
     9: "SEPTIEMBRE", 10: "OCTUBRE", 11: "NOVIEMBRE", 12: "DICIEMBRE",
 }
 
+TABS_TECNICOS = [
+    "CRISTIAN", "MARTIN", "JAMES", "JEAN", "YOHAN",
+    "ERCS", "HANS", "JOEL", "DIANA", "AYMAN", "LUIS E"
+]
+TABS_INTEGRAS = ["Base", "Hoja6"]
+TABS_SOLO_ENCABEZADO = TABS_TECNICOS + ["Descuentos"]
+TABS_OMITIR = ["Hoja1"]
+
+
+def _get_token() -> str:
+    return get_access_token()
+
 
 def _crear_sheet_vacio(nombre: str, token: str) -> str:
-    """Crea un nuevo spreadsheet vacío via Sheets API y devuelve el ID."""
     import requests
     resp = requests.post(
         "https://sheets.googleapis.com/v4/spreadsheets",
@@ -27,12 +38,7 @@ def _crear_sheet_vacio(nombre: str, token: str) -> str:
     return resp.json()["spreadsheetId"]
 
 
-def _get_token() -> str:
-    from sheets import get_access_token
-    return get_access_token()
-
-
-async def _actualizar_variable_railway(nuevo_sheet_id: str) -> None:
+async def _actualizar_variable_railway(nombre_var: str, valor: str) -> None:
     token = os.getenv("RAILWAY_TOKEN")
     service_id = os.getenv("RAILWAY_SERVICE_ID")
     environment_id = os.getenv("RAILWAY_ENVIRONMENT_ID", "")
@@ -40,8 +46,8 @@ async def _actualizar_variable_railway(nuevo_sheet_id: str) -> None:
     variables: dict = {
         "input": {
             "serviceId": service_id,
-            "name": "GOOGLE_SHEET_ID_ALARMAS",
-            "value": nuevo_sheet_id,
+            "name": nombre_var,
+            "value": valor,
         }
     }
     if environment_id:
@@ -62,6 +68,41 @@ async def _actualizar_variable_railway(nuevo_sheet_id: str) -> None:
             raise RuntimeError(f"Railway API error: {data['errors']}")
 
 
+async def _duplicar_sheet(sheet_id_origen: str, nuevo_nombre: str) -> str:
+    token = _get_token()
+    wb_origen = get_sheet(sheet_id_origen)
+    nuevo_id = _crear_sheet_vacio(nuevo_nombre, token)
+    wb_nuevo = get_sheet(nuevo_id)
+
+    tabs_origen = wb_origen.worksheets()
+    primera = True
+
+    for ws_origen in tabs_origen:
+        nombre_tab = ws_origen.title
+
+        if nombre_tab in TABS_OMITIR:
+            continue
+
+        todos = ws_origen.get_all_values()
+
+        if primera:
+            ws_nuevo = wb_nuevo.get_worksheet(0)
+            ws_nuevo.update_title(nombre_tab)
+            primera = False
+        else:
+            ws_nuevo = wb_nuevo.add_worksheet(title=nombre_tab, rows=max(200, len(todos) + 10), cols=20)
+
+        if not todos:
+            continue
+
+        if nombre_tab in TABS_SOLO_ENCABEZADO:
+            ws_nuevo.update([todos[0]], "A1")
+        else:
+            ws_nuevo.update(todos, "A1")
+
+    return nuevo_id
+
+
 async def ejecutar_nuevo_mes(año: int | None = None, mes: int | None = None) -> dict:
     now = datetime.now()
     año = año or now.year
@@ -69,44 +110,18 @@ async def ejecutar_nuevo_mes(año: int | None = None, mes: int | None = None) ->
     nombre_mes = MESES[mes]
     nuevo_nombre = f"{nombre_mes}_{año}"
 
-    # Leer sheet origen
-    sheet_id = os.getenv("GOOGLE_SHEET_ID_ALARMAS")
-    wb_origen = get_sheet(sheet_id)
+    sheet_id_alarmas = os.getenv("GOOGLE_SHEET_ID_ALARMAS")
+    nuevo_id_alarmas = await _duplicar_sheet(sheet_id_alarmas, f"ALARMAS_{nuevo_nombre}")
+    await _actualizar_variable_railway("GOOGLE_SHEET_ID_ALARMAS", nuevo_id_alarmas)
 
-    # Crear nuevo spreadsheet vacío
-    token = _get_token()
-    nuevo_id = _crear_sheet_vacio(nuevo_nombre, token)
-    wb_nuevo = get_sheet(nuevo_id)
-
-    # Copiar cada tab del origen al nuevo, limpiando datos de técnicos
-    tabs_origen = wb_origen.worksheets()
-    primera = True
-    for ws_origen in tabs_origen:
-        nombre_tab = ws_origen.title
-        todos = ws_origen.get_all_values()
-
-        if primera:
-            # La primera hoja ya existe en el nuevo sheet (Sheet1), renombrarla
-            ws_nuevo = wb_nuevo.get_worksheet(0)
-            ws_nuevo.update_title(nombre_tab)
-            primera = False
-        else:
-            ws_nuevo = wb_nuevo.add_worksheet(title=nombre_tab, rows=200, cols=20)
-
-        if not todos:
-            continue
-
-        # Si es tab de técnico, solo copiar encabezados (fila 1)
-        if nombre_tab in TECNICOS_ALARMAS:
-            ws_nuevo.update([todos[0]], "A1")
-        else:
-            # Tab Base u otras: copiar todo
-            ws_nuevo.update(todos, "A1")
-
-    await _actualizar_variable_railway(nuevo_id)
+    sheet_id_fibra = os.getenv("ACTIVE_SHEET_ID")
+    nuevo_id_fibra = await _duplicar_sheet(sheet_id_fibra, nuevo_nombre)
+    await _actualizar_variable_railway("ACTIVE_SHEET_ID", nuevo_id_fibra)
 
     return {
-        "nuevo_id": nuevo_id,
         "nombre": nuevo_nombre,
-        "url": f"https://docs.google.com/spreadsheets/d/{nuevo_id}",
+        "alarmas_id": nuevo_id_alarmas,
+        "fibra_id": nuevo_id_fibra,
+        "alarmas_url": f"https://docs.google.com/spreadsheets/d/{nuevo_id_alarmas}",
+        "fibra_url": f"https://docs.google.com/spreadsheets/d/{nuevo_id_fibra}",
     }

@@ -189,7 +189,9 @@ async def callback_nuevo_mes(update: Update, context: ContextTypes.DEFAULT_TYPE)
     try:
         resultado = await ejecutar_nuevo_mes(ano, mes)
         await query.edit_message_text(
-            f"Sheet {resultado['nombre']} creado.\n\nURL: {resultado['url']}"
+            f"Sheets {resultado['nombre']} creados.\n\n"
+            f"Fibra: {resultado['fibra_url']}\n"
+            f"Alarmas: {resultado['alarmas_url']}"
         )
     except Exception as e:
         logger.error(f"Error creando nuevo mes: {e}")
