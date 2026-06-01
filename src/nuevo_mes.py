@@ -1,10 +1,8 @@
 import logging
 import os
 from datetime import datetime
-
 import httpx
-
-from sheets import get_access_token, get_sheet
+from sheets import get_sheet
 
 logger = logging.getLogger(__name__)
 
@@ -17,21 +15,24 @@ MESES = {
 }
 
 
-async def _copiar_sheet(sheet_id: str, nombre: str) -> str:
-    """Duplica un spreadsheet en Drive y devuelve el nuevo ID."""
-    token = get_access_token()
-    async with httpx.AsyncClient() as client:
-        resp = await client.post(
-            f"https://www.googleapis.com/drive/v3/files/{sheet_id}/copy",
-            headers={"Authorization": f"Bearer {token}"},
-            json={"name": nombre},
-        )
-        resp.raise_for_status()
-        return resp.json()["id"]
+def _crear_sheet_vacio(nombre: str, token: str) -> str:
+    """Crea un nuevo spreadsheet vacío via Sheets API y devuelve el ID."""
+    import requests
+    resp = requests.post(
+        "https://sheets.googleapis.com/v4/spreadsheets",
+        headers={"Authorization": f"Bearer {token}", "Content-Type": "application/json"},
+        json={"properties": {"title": nombre}},
+    )
+    resp.raise_for_status()
+    return resp.json()["spreadsheetId"]
+
+
+def _get_token() -> str:
+    from sheets import get_access_token
+    return get_access_token()
 
 
 async def _actualizar_variable_railway(nuevo_sheet_id: str) -> None:
-    """Actualiza GOOGLE_SHEET_ID_ALARMAS en Railway via GraphQL API."""
     token = os.getenv("RAILWAY_TOKEN")
     service_id = os.getenv("RAILWAY_SERVICE_ID")
     environment_id = os.getenv("RAILWAY_ENVIRONMENT_ID", "")
@@ -68,18 +69,39 @@ async def ejecutar_nuevo_mes(año: int | None = None, mes: int | None = None) ->
     nombre_mes = MESES[mes]
     nuevo_nombre = f"{nombre_mes}_{año}"
 
+    # Leer sheet origen
     sheet_id = os.getenv("GOOGLE_SHEET_ID_ALARMAS")
-    nuevo_id = await _copiar_sheet(sheet_id, nuevo_nombre)
+    wb_origen = get_sheet(sheet_id)
 
-    nuevo_wb = get_sheet(nuevo_id)
-    for tecnico in TECNICOS_ALARMAS:
-        try:
-            ws = nuevo_wb.worksheet(tecnico)
-            all_values = ws.get_all_values()
-            if len(all_values) > 2:
-                ws.batch_clear([f"A3:E{len(all_values) + 10}"])
-        except Exception as e:
-            logger.warning(f"No se pudo limpiar tab {tecnico}: {e}")
+    # Crear nuevo spreadsheet vacío
+    token = _get_token()
+    nuevo_id = _crear_sheet_vacio(nuevo_nombre, token)
+    wb_nuevo = get_sheet(nuevo_id)
+
+    # Copiar cada tab del origen al nuevo, limpiando datos de técnicos
+    tabs_origen = wb_origen.worksheets()
+    primera = True
+    for ws_origen in tabs_origen:
+        nombre_tab = ws_origen.title
+        todos = ws_origen.get_all_values()
+
+        if primera:
+            # La primera hoja ya existe en el nuevo sheet (Sheet1), renombrarla
+            ws_nuevo = wb_nuevo.get_worksheet(0)
+            ws_nuevo.update_title(nombre_tab)
+            primera = False
+        else:
+            ws_nuevo = wb_nuevo.add_worksheet(title=nombre_tab, rows=200, cols=20)
+
+        if not todos:
+            continue
+
+        # Si es tab de técnico, solo copiar encabezados (fila 1)
+        if nombre_tab in TECNICOS_ALARMAS:
+            ws_nuevo.update([todos[0]], "A1")
+        else:
+            # Tab Base u otras: copiar todo
+            ws_nuevo.update(todos, "A1")
 
     await _actualizar_variable_railway(nuevo_id)
 
