@@ -102,8 +102,6 @@ async def recibir_screenshot(update: Update, context: ContextTypes.DEFAULT_TYPE)
 
         context.user_data["ordenes_pendientes"] = ordenes
         lineas = [f"- {o['orden']} | {o['tipo']}" +
-                  (f" CAM+{o['camaras']}" if o.get("camaras") else "") +
-                  (" INVIABLE" if o.get("inviable") else "") +
                   (f"\n  Fecha: {o['fecha']}" if o.get("fecha") else "")
                   for o in ordenes]
         resumen = f"{tecnico} - {len(ordenes)} orden(es):\n\n" + "\n".join(lineas) + "\n\nRegistrar estas ordenes?"

@@ -166,17 +166,11 @@ async def confirmar_registro_alarmas(tecnico: str, ordenes: list[dict]) -> int:
 
     filas = []
     for o in ordenes:
-        codigo_base = "ZA_INVIABLE" if o.get("inviable") else CODIGO_POR_TIPO.get(o["tipo"], f"ZA_{o['tipo']}")
+        codigo_base = CODIGO_POR_TIPO.get(o["tipo"], f"ZA_{o['tipo']}")
         p = precios_base.get(codigo_base, {"precio": 0, "tecnico": 0})
         if (o["orden"], codigo_base) not in registradas:
             filas.append([o.get("fecha", ""), o["orden"], codigo_base, p["precio"], p["tecnico"]])
             registradas.add((o["orden"], codigo_base))
-        p_cam = precios_base.get("ZA_CAMARA", {"precio": 0, "tecnico": 0})
-        camaras_existentes = sum(1 for (ord_, cod_) in registradas if ord_ == o["orden"] and cod_ == "ZA_CAMARA")
-        camaras_a_agregar = max(0, (o.get("camaras", 0) or 0) - camaras_existentes)
-        for _ in range(camaras_a_agregar):
-            filas.append([o.get("fecha", ""), o["orden"], "ZA_CAMARA", p_cam["precio"], p_cam["tecnico"]])
-            registradas.add((o["orden"], "ZA_CAMARA"))
 
     if filas:
         ws.append_rows(filas, value_input_option="USER_ENTERED")
