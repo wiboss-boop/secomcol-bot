@@ -170,6 +170,7 @@ async def confirmar_registro_alarmas(tecnico: str, ordenes: list[dict]) -> int:
         p = precios_base.get(codigo_base, {"precio": 0, "tecnico": 0})
         if (o["orden"], codigo_base) not in registradas:
             filas.append([o.get("fecha", ""), o["orden"], codigo_base, p["precio"], p["tecnico"]])
+            registradas.add((o["orden"], codigo_base))
         p_cam = precios_base.get("ZA_CAMARA", {"precio": 0, "tecnico": 0})
         camaras_existentes = sum(1 for (ord_, cod_) in registradas if ord_ == o["orden"] and cod_ == "ZA_CAMARA")
         camaras_a_agregar = max(0, (o.get("camaras", 0) or 0) - camaras_existentes)
