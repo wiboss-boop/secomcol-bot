@@ -6,7 +6,7 @@ from sheets import get_sheet, get_access_token
 
 logger = logging.getLogger(__name__)
 
-TECNICOS_ALARMAS = ["JEAN", "JOEL", "DIANA"]
+TECNICOS_ALARMAS = ["JEAN", "JOEL", "DIANA", "MARTIN"]
 
 MESES = {
     1: "ENERO", 2: "FEBRERO", 3: "MARZO", 4: "ABRIL",

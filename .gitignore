@@ -1,0 +1,16 @@
+# Secretos y credenciales — NUNCA versionar
+secomcol-bot-*.json
+*-credentials*.json
+env.txt
+github-recovery-codes.txt
+.env
+
+# Artefactos generados
+nomina_*.xlsx
+*.dmg
+
+# Python
+__pycache__/
+*.pyc
+.venv/
+venv/

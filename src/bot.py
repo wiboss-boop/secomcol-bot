@@ -23,7 +23,7 @@ logging.basicConfig(
 logger = logging.getLogger(__name__)
 
 ESPERANDO_TECNICO, ESPERANDO_SCREENSHOT = range(2)
-TECNICOS_ALARMAS = ["JEAN", "JOEL", "DIANA"]
+TECNICOS_ALARMAS = ["JEAN", "JOEL", "DIANA", "MARTIN"]
 ALLOWED_USERS = (
     list(map(int, os.getenv("ALLOWED_USERS", "").split(",")))
     if os.getenv("ALLOWED_USERS") else []
@@ -169,7 +169,7 @@ async def cmd_nuevo_mes(update: Update, context: ContextTypes.DEFAULT_TYPE) -> N
     ]]
     await update.message.reply_text(
         f"Vas a crear el Sheet de {MESES[mes]} {ano}.\n\n"
-        "Esto duplicara el Sheet actual, limpiara los datos de JEAN, JOEL y DIANA "
+        f"Esto duplicara el Sheet actual, limpiara los datos de {', '.join(TECNICOS_ALARMAS)} "
         "y actualizara el bot para usar el nuevo archivo.\n\nConfirmas?",
         reply_markup=InlineKeyboardMarkup(keyboard),
     )
