@@ -4,6 +4,7 @@ import logging
 import os
 import re
 import unicodedata
+from datetime import datetime
 
 import anthropic
 import gspread
@@ -59,6 +60,32 @@ _PROMPT_ZENER = (
     '"fecha": "30/04/2026", "completada": true}]}. '
     "Si hay fecha en el calendario usala para las ordenes sin fecha explicita."
 )
+
+
+def _anio_desde_orden(orden: str) -> int | None:
+    """El codigo de orden ZENER embebe el anio: SC<AAAA><secuencia> (p.ej. SC2026185010)."""
+    match = re.match(r"SC(\d{4})", orden.upper())
+    if match:
+        anio = int(match.group(1))
+        if 2020 <= anio <= 2100:
+            return anio
+    return None
+
+
+def _corregir_anio_fecha(fecha_raw: str, orden: str) -> str:
+    """El LLM lee bien dia/mes del screenshot pero inventa el anio (sesgo -> 2025).
+    Conserva dia/mes y fuerza el anio real: primero el del codigo de orden
+    (SC<AAAA>...), si no, el anio actual. Sin dia/mes usable -> fecha de hoy.
+    """
+    anio = _anio_desde_orden(orden) or datetime.now().year
+    match = re.search(r"(\d{1,2})[/\-](\d{1,2})", fecha_raw or "")
+    if match:
+        dia, mes = int(match.group(1)), int(match.group(2))
+        try:
+            return datetime(anio, mes, dia).strftime("%d/%m/%Y")
+        except ValueError:
+            pass
+    return datetime.now().strftime("%d/%m/%Y")
 
 
 def _normalizar_tipo(tipo_raw: str) -> str:
@@ -128,7 +155,7 @@ async def procesar_screenshot_alarmas(imagen, notas_texto: str, tecnico: str, bo
         ordenes.append({
             "orden": codigo,
             "tipo": _normalizar_tipo(o.get("tipo", "")),
-            "fecha": o.get("fecha", ""),
+            "fecha": _corregir_anio_fecha(o.get("fecha", ""), codigo),
             "camaras": nota["camaras"] or camaras_global,
             "inviable": nota.get("inviable", False) or inviable_global,
         })
