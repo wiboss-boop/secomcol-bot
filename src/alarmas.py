@@ -52,9 +52,11 @@ CODIGO_POR_TIPO = {
 
 _PROMPT_ZENER = (
     "Analiza este screenshot de la app ZENER de instalaciones de alarmas. "
-    "Extrae TODAS las ordenes visibles, tengan o no checkmark verde. Incluye ordenes con circulo naranja, icono de lapiz, o cualquier estado. "
-    "Cada orden tiene un codigo SC seguido de numeros, un tipo entre parentesis "
-    "(Instalaciones, Incidencias, Mantenimiento, Desmontaje, Traslado) y una fecha o hora. "
+    "Extrae TODAS las ordenes visibles, con cualquier estado (check verde, icono de lapiz, circulo naranja, etc.). "
+    "Cada orden tiene un codigo (por ejemplo SC..., OT..., LS...), un tipo entre parentesis "
+    "(Instalaciones, Incidencias, Mantenimiento, Desmontaje, Traslado) y una fecha u hora. "
+    "El campo 'completada' debe ser true SOLO si la orden muestra un checkmark VERDE a la derecha; "
+    "si en su lugar muestra un icono de lapiz/edicion o cualquier otro estado sin check verde, debe ser false. "
     "Devuelve SOLO un JSON sin texto adicional con esta estructura: "
     '{"ordenes": [{"orden": "SC2026185010", "tipo": "Instalaciones", '
     '"fecha": "30/04/2026", "completada": true}]}. '
@@ -149,7 +151,13 @@ async def procesar_screenshot_alarmas(imagen, notas_texto: str, tecnico: str, bo
                 notas_por_orden[m.group(1).upper()] = _extraer_notas(m.group(2).strip())
 
     ordenes = []
+    omitidas = 0
     for o in ordenes_raw:
+        # Solo se registran las ordenes con check verde (completadas). Las que muestran
+        # icono de lapiz u otro estado se ignoran.
+        if not o.get("completada"):
+            omitidas += 1
+            continue
         codigo = o["orden"].upper()
         nota = notas_por_orden.get(codigo, {"camaras": 0, "inviable": False})
         ordenes.append({
@@ -159,6 +167,8 @@ async def procesar_screenshot_alarmas(imagen, notas_texto: str, tecnico: str, bo
             "camaras": nota["camaras"] or camaras_global,
             "inviable": nota.get("inviable", False) or inviable_global,
         })
+    if omitidas:
+        logger.info("Alarmas: %d orden(es) omitidas por no tener check verde", omitidas)
     return ordenes
 
 
