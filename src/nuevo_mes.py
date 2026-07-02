@@ -41,7 +41,10 @@ def _sembrar_formulas_precio(ws, primera_fila_datos: int, hasta: int = FORMULA_M
         ]
         for r in range(primera_fila_datos, hasta + 1)
     ]
-    ws.update(grid, f"D{primera_fila_datos}:E{hasta}", value_input_option="USER_ENTERED")
+    rango = f"D{primera_fila_datos}:E{hasta}"
+    ws.update(grid, rango, value_input_option="USER_ENTERED")
+    # PRECIO/TECNICO en formato de euros.
+    ws.format(rango, {"numberFormat": {"type": "CURRENCY", "pattern": '"€"#,##0.00'}})
 
 
 def _get_token() -> str:
