@@ -22,6 +22,27 @@ TABS_INTEGRAS = ["Base", "Hoja6"]
 TABS_SOLO_ENCABEZADO = TABS_TECNICOS + ["Descuentos"]
 TABS_OMITIR = ["Hoja1"]
 
+# Hasta que fila se siembran las formulas de PRECIO/TECNICO en cada hoja de tecnico.
+FORMULA_MAXROW = 500
+
+
+def _sembrar_formulas_precio(ws, primera_fila_datos: int, hasta: int = FORMULA_MAXROW) -> None:
+    """Siembra en PRECIO (col D) y TECNICO (col E) la formula VLOOKUP contra la
+    pestana Base, para que cualquier CODIGO que escriban los bots se tarifique solo.
+    El bot de fibra solo escribe FECHA/ORDEN/CODIGO; sin esta formula esas columnas
+    quedan vacias (el bot de alarmas escribe su precio literal, que la sobreescribe).
+    """
+    if ws.row_count < hasta:
+        ws.resize(rows=hasta + 20)
+    grid = [
+        [
+            f'=IF($C{r}="","",IFERROR(VLOOKUP($C{r},Base!$A:$C,2,FALSE),""))',
+            f'=IF($C{r}="","",IFERROR(VLOOKUP($C{r},Base!$A:$C,3,FALSE),""))',
+        ]
+        for r in range(primera_fila_datos, hasta + 1)
+    ]
+    ws.update(grid, f"D{primera_fila_datos}:E{hasta}", value_input_option="USER_ENTERED")
+
 
 def _get_token() -> str:
     return get_access_token()
@@ -96,7 +117,16 @@ async def _duplicar_sheet(sheet_id_origen: str, nuevo_nombre: str) -> str:
             continue
 
         if nombre_tab in TABS_SOLO_ENCABEZADO:
-            ws_nuevo.update([todos[0]], "A1")
+            # Copiar las filas de encabezado hasta la de titulos de columna (la que trae
+            # "CODIGO"), descartando los datos del mes anterior.
+            fila_codigo = next(
+                (i for i, r in enumerate(todos) if len(r) > 2 and r[2].strip().upper() == "CODIGO"),
+                0,
+            )
+            ws_nuevo.update(todos[: fila_codigo + 1], "A1")
+            # Hojas de tecnico: sembrar las formulas VLOOKUP de PRECIO/TECNICO.
+            if nombre_tab in TABS_TECNICOS:
+                _sembrar_formulas_precio(ws_nuevo, primera_fila_datos=fila_codigo + 2)
         else:
             ws_nuevo.update(todos, "A1")
 
