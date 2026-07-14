@@ -265,6 +265,7 @@ def main() -> None:
             ),
         ],
         conversation_timeout=300,
+        allow_reentry=True,
     )
 
     app.add_handler(CommandHandler("start", start))
