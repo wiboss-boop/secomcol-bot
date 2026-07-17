@@ -20,6 +20,17 @@ def _sin_acentos(s: str) -> str:
     return "".join(c for c in unicodedata.normalize("NFD", s) if unicodedata.category(c) != "Mn")
 
 
+def _mensaje_menciona_tecnico(texto_normalizado: str, tecnico: str) -> bool:
+    """Matchea por el primer nombre con limite de palabra.
+
+    El canonico puede llevar apellido/inicial (p.ej. "LUIS E"), pero en el
+    mensaje se suele escribir solo el nombre ("Luis"). Se compara el primer
+    token con \\b para no matchear substrings dentro de otra palabra.
+    """
+    primer_nombre = _sin_acentos(tecnico.lower()).split()[0]
+    return re.search(rf"\b{re.escape(primer_nombre)}\b", texto_normalizado) is not None
+
+
 def parsear_descuento(texto: str) -> dict | None:
     t = _sin_acentos(texto.lower().strip())
     if "descontar" not in t:
@@ -30,7 +41,7 @@ def parsear_descuento(texto: str) -> dict | None:
         return None
     monto = float(monto_match.group(1).replace(",", "."))
 
-    tecnico = next((tec for tec in TECNICOS if _sin_acentos(tec.lower()) in t), None)
+    tecnico = next((tec for tec in TECNICOS if _mensaje_menciona_tecnico(t, tec)), None)
     if not tecnico:
         return None
 
