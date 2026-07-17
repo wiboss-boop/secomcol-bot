@@ -45,7 +45,11 @@ def parsear_descuento(texto: str) -> dict | None:
     if not tecnico:
         return None
 
-    concepto_match = re.search(r"\bde\s+(.+?)(?:\s+a\s+\w+)?$", t)
+    # El concepto es lo que va tras "de ...", recortando el destinatario final
+    # ("a Luis", "a Luis E"): se ancla al primer nombre del tecnico para no
+    # tragarse un concepto que legitimamente contenga " a " (p.ej. "a la 80").
+    primer_nombre = _sin_acentos(tecnico.lower()).split()[0]
+    concepto_match = re.search(rf"\bde\s+(.+?)(?:\s+a\s+{re.escape(primer_nombre)}.*)?$", t)
     concepto = concepto_match.group(1).strip().upper() if concepto_match else "DESCUENTO"
 
     return {"tecnico": tecnico, "monto": monto, "concepto": concepto}
