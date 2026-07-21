@@ -9,7 +9,7 @@ from datetime import datetime
 import anthropic
 import gspread
 
-from sheets import get_sheet
+from sheets import get_sheet, llamar_con_reintento
 
 logger = logging.getLogger(__name__)
 
@@ -178,7 +178,8 @@ def _limpiar_precio(v: str) -> float:
 
 def _leer_precios_base(wb: gspread.Spreadsheet) -> dict:
     precios = {}
-    for row in wb.worksheet("Base").get_all_values()[1:]:
+    filas_base = llamar_con_reintento(lambda: wb.worksheet("Base").get_all_values())
+    for row in filas_base[1:]:
         if len(row) >= 3 and row[0]:
             codigo = row[0].strip().replace("\xa0", "")
             try:
@@ -189,16 +190,16 @@ def _leer_precios_base(wb: gspread.Spreadsheet) -> dict:
 
 
 async def confirmar_registro_alarmas(tecnico: str, ordenes: list[dict]) -> int:
-    wb = get_sheet()
+    wb = llamar_con_reintento(get_sheet)
     precios_base = _leer_precios_base(wb)
 
     try:
-        ws = wb.worksheet(tecnico)
+        ws = llamar_con_reintento(lambda: wb.worksheet(tecnico))
     except gspread.WorksheetNotFound:
-        ws = wb.add_worksheet(title=tecnico, rows=1000, cols=5)
-        ws.append_row(["FECHA", "ORDEN", "CODIGO", "PRECIO", "TECNICO"])
+        ws = llamar_con_reintento(lambda: wb.add_worksheet(title=tecnico, rows=1000, cols=5))
+        llamar_con_reintento(lambda: ws.append_row(["FECHA", "ORDEN", "CODIGO", "PRECIO", "TECNICO"]))
 
-    existing = ws.get_all_values()
+    existing = llamar_con_reintento(lambda: ws.get_all_values())
     registradas = {(r[1].strip().upper(), r[2].strip().upper()) for r in existing[1:] if len(r) >= 3 and r[1]}
 
     filas = []
@@ -210,5 +211,5 @@ async def confirmar_registro_alarmas(tecnico: str, ordenes: list[dict]) -> int:
             registradas.add((o["orden"], codigo_base))
 
     if filas:
-        ws.append_rows(filas, value_input_option="USER_ENTERED")
+        llamar_con_reintento(lambda: ws.append_rows(filas, value_input_option="USER_ENTERED"))
     return len(filas)

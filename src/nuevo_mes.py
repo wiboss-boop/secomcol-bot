@@ -2,7 +2,7 @@ import logging
 import os
 from datetime import datetime
 import httpx
-from sheets import get_sheet, get_access_token
+from sheets import get_sheet, get_access_token, llamar_con_reintento
 
 logger = logging.getLogger(__name__)
 
@@ -33,7 +33,7 @@ def _sembrar_formulas_precio(ws, primera_fila_datos: int, hasta: int = FORMULA_M
     quedan vacias (el bot de alarmas escribe su precio literal, que la sobreescribe).
     """
     if ws.row_count < hasta:
-        ws.resize(rows=hasta + 20)
+        llamar_con_reintento(lambda: ws.resize(rows=hasta + 20))
     grid = [
         [
             f'=IF($C{r}="","",IFERROR(VLOOKUP($C{r},Base!$A:$C,2,FALSE),""))',
@@ -42,9 +42,9 @@ def _sembrar_formulas_precio(ws, primera_fila_datos: int, hasta: int = FORMULA_M
         for r in range(primera_fila_datos, hasta + 1)
     ]
     rango = f"D{primera_fila_datos}:E{hasta}"
-    ws.update(grid, rango, value_input_option="USER_ENTERED")
+    llamar_con_reintento(lambda: ws.update(grid, rango, value_input_option="USER_ENTERED"))
     # PRECIO/TECNICO en formato de euros.
-    ws.format(rango, {"numberFormat": {"type": "CURRENCY", "pattern": '"€"#,##0.00'}})
+    llamar_con_reintento(lambda: ws.format(rango, {"numberFormat": {"type": "CURRENCY", "pattern": '"€"#,##0.00'}}))
 
 
 def _get_token() -> str:
@@ -94,11 +94,11 @@ async def _actualizar_variable_railway(nombre_var: str, valor: str) -> None:
 
 async def _duplicar_sheet(sheet_id_origen: str, nuevo_nombre: str) -> str:
     token = _get_token()
-    wb_origen = get_sheet(sheet_id_origen)
+    wb_origen = llamar_con_reintento(lambda: get_sheet(sheet_id_origen))
     nuevo_id = _crear_sheet_vacio(nuevo_nombre, token)
-    wb_nuevo = get_sheet(nuevo_id)
+    wb_nuevo = llamar_con_reintento(lambda: get_sheet(nuevo_id))
 
-    tabs_origen = wb_origen.worksheets()
+    tabs_origen = llamar_con_reintento(wb_origen.worksheets)
     primera = True
 
     for ws_origen in tabs_origen:
@@ -107,14 +107,16 @@ async def _duplicar_sheet(sheet_id_origen: str, nuevo_nombre: str) -> str:
         if nombre_tab in TABS_OMITIR:
             continue
 
-        todos = ws_origen.get_all_values()
+        todos = llamar_con_reintento(ws_origen.get_all_values)
 
         if primera:
-            ws_nuevo = wb_nuevo.get_worksheet(0)
-            ws_nuevo.update_title(nombre_tab)
+            ws_nuevo = llamar_con_reintento(lambda: wb_nuevo.get_worksheet(0))
+            llamar_con_reintento(lambda: ws_nuevo.update_title(nombre_tab))
             primera = False
         else:
-            ws_nuevo = wb_nuevo.add_worksheet(title=nombre_tab, rows=max(200, len(todos) + 10), cols=20)
+            ws_nuevo = llamar_con_reintento(
+                lambda: wb_nuevo.add_worksheet(title=nombre_tab, rows=max(200, len(todos) + 10), cols=20)
+            )
 
         if not todos:
             continue
@@ -126,12 +128,12 @@ async def _duplicar_sheet(sheet_id_origen: str, nuevo_nombre: str) -> str:
                 (i for i, r in enumerate(todos) if len(r) > 2 and r[2].strip().upper() == "CODIGO"),
                 0,
             )
-            ws_nuevo.update(todos[: fila_codigo + 1], "A1")
+            llamar_con_reintento(lambda: ws_nuevo.update(todos[: fila_codigo + 1], "A1"))
             # Hojas de tecnico: sembrar las formulas VLOOKUP de PRECIO/TECNICO.
             if nombre_tab in TABS_TECNICOS:
                 _sembrar_formulas_precio(ws_nuevo, primera_fila_datos=fila_codigo + 2)
         else:
-            ws_nuevo.update(todos, "A1")
+            llamar_con_reintento(lambda: ws_nuevo.update(todos, "A1"))
 
     return nuevo_id
 
