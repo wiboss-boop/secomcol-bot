@@ -6,7 +6,7 @@ from datetime import datetime
 
 import gspread
 
-from sheets import get_sheet
+from sheets import get_sheet, llamar_con_reintento
 
 logger = logging.getLogger(__name__)
 
@@ -56,13 +56,15 @@ def parsear_descuento(texto: str) -> dict | None:
 
 
 def registrar_descuento(tecnico: str, concepto: str, monto: float) -> None:
-    wb = get_sheet()
+    wb = llamar_con_reintento(get_sheet)
     try:
-        ws = wb.worksheet("Descuentos")
+        ws = llamar_con_reintento(lambda: wb.worksheet("Descuentos"))
     except gspread.WorksheetNotFound:
-        ws = wb.add_worksheet(title="Descuentos", rows=1000, cols=4)
-        ws.append_row(["FECHA", "TECNICO", "CONCEPTO", "MONTO"])
-    ws.append_row(
-        [datetime.now().strftime("%d/%m/%Y"), tecnico, concepto, monto],
-        value_input_option="USER_ENTERED",
+        ws = llamar_con_reintento(lambda: wb.add_worksheet(title="Descuentos", rows=1000, cols=4))
+        llamar_con_reintento(lambda: ws.append_row(["FECHA", "TECNICO", "CONCEPTO", "MONTO"]))
+    llamar_con_reintento(
+        lambda: ws.append_row(
+            [datetime.now().strftime("%d/%m/%Y"), tecnico, concepto, monto],
+            value_input_option="USER_ENTERED",
+        )
     )
