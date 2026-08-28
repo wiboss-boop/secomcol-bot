@@ -4,7 +4,7 @@ import logging
 import os
 import re
 import unicodedata
-from datetime import datetime
+from datetime import date, datetime
 
 import anthropic
 import gspread
@@ -64,30 +64,29 @@ _PROMPT_ZENER = (
 )
 
 
-def _anio_desde_orden(orden: str) -> int | None:
-    """El codigo de orden ZENER embebe el anio: SC<AAAA><secuencia> (p.ej. SC2026185010)."""
-    match = re.match(r"SC(\d{4})", orden.upper())
-    if match:
-        anio = int(match.group(1))
-        if 2020 <= anio <= 2100:
-            return anio
-    return None
+def _corregir_fecha(fecha_raw: str, hoy: date | None = None) -> str:
+    """El LLM lee bien el DIA del screenshot, pero no el mes: a fin de mes la app ya
+    muestra el calendario del mes siguiente y estampa ese. Pasó en junio (desde el 26),
+    julio (desde el 27) y agosto-2026 (el 27 y 28 se registraron como septiembre).
 
-
-def _corregir_anio_fecha(fecha_raw: str, orden: str) -> str:
-    """El LLM lee bien dia/mes del screenshot pero inventa el anio (sesgo -> 2025).
-    Conserva dia/mes y fuerza el anio real: primero el del codigo de orden
-    (SC<AAAA>...), si no, el anio actual. Sin dia/mes usable -> fecha de hoy.
+    Se conserva el dia y se ancla mes/anio al dia de subida: la fecha mas reciente
+    <= hoy con ese dia. Sin dia usable -> hoy.
     """
-    anio = _anio_desde_orden(orden) or datetime.now().year
+    hoy = hoy or datetime.now().date()
     match = re.search(r"(\d{1,2})[/\-](\d{1,2})", fecha_raw or "")
-    if match:
-        dia, mes = int(match.group(1)), int(match.group(2))
-        try:
-            return datetime(anio, mes, dia).strftime("%d/%m/%Y")
-        except ValueError:
-            pass
-    return datetime.now().strftime("%d/%m/%Y")
+    if not match:
+        return hoy.strftime("%d/%m/%Y")
+    dia, mes_leido = int(match.group(1)), int(match.group(2))
+    anio, mes = hoy.year, hoy.month
+    if dia > hoy.day:                      # screenshot con ordenes del mes anterior
+        mes, anio = (12, anio - 1) if mes == 1 else (mes - 1, anio)
+    if mes_leido != mes:
+        logger.warning("Alarmas: el LLM leyo mes %d para el dia %d; se usa %d",
+                       mes_leido, dia, mes)
+    try:
+        return date(anio, mes, dia).strftime("%d/%m/%Y")
+    except ValueError:
+        return hoy.strftime("%d/%m/%Y")
 
 
 def _normalizar_tipo(tipo_raw: str) -> str:
@@ -163,7 +162,7 @@ async def procesar_screenshot_alarmas(imagen, notas_texto: str, tecnico: str, bo
         ordenes.append({
             "orden": codigo,
             "tipo": _normalizar_tipo(o.get("tipo", "")),
-            "fecha": _corregir_anio_fecha(o.get("fecha", ""), codigo),
+            "fecha": _corregir_fecha(o.get("fecha", "")),
             "camaras": nota["camaras"] or camaras_global,
             "inviable": nota.get("inviable", False) or inviable_global,
         })
