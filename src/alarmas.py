@@ -1,3 +1,4 @@
+import asyncio
 import base64
 import json
 import logging
@@ -14,6 +15,10 @@ from sheets import get_sheet, llamar_con_reintento
 logger = logging.getLogger(__name__)
 
 _client = anthropic.AsyncAnthropic(api_key=os.getenv("ANTHROPIC_API_KEY"))
+
+# Anthropic devuelve estos codigos cuando esta saturada o limitada; no son culpa del
+# screenshot: 429 = rate limit, 529 = overloaded, 5xx = fallo transitorio del backend.
+_CODIGOS_TRANSITORIOS_LLM = {429, 500, 502, 503, 504, 529}
 
 TIPO_MAPPING = {
     "instalacion": "INSTALACION",
@@ -121,18 +126,54 @@ def _extraer_notas(notas: str) -> dict:
     return resultado
 
 
+async def _leer_screenshot_con_reintento(
+    img_b64: str,
+    *,
+    intentos_maximos: int = 4,
+    espera_base_segundos: float = 2.0,
+):
+    """Pide la lectura del screenshot reintentando ante saturacion de Anthropic.
+
+    El SDK ya reintenta 2 veces con esperas de milisegundos; en un pico de carga
+    (529 Overloaded) eso no alcanza y el error llegaba crudo al tecnico en Telegram.
+    Backoff exponencial: 2s, 4s, 8s.
+    """
+    for numero_intento in range(1, intentos_maximos + 1):
+        try:
+            return await _client.messages.create(
+                model="claude-sonnet-4-6",
+                max_tokens=1000,
+                messages=[{"role": "user", "content": [
+                    {"type": "image", "source": {"type": "base64", "media_type": "image/jpeg", "data": img_b64}},
+                    {"type": "text", "text": _PROMPT_ZENER},
+                ]}],
+            )
+        except (anthropic.APIStatusError, anthropic.APIConnectionError) as error:
+            status_code = getattr(error, "status_code", None)
+            es_transitorio = (
+                isinstance(error, anthropic.APIConnectionError)
+                or status_code in _CODIGOS_TRANSITORIOS_LLM
+            )
+            es_ultimo_intento = numero_intento == intentos_maximos
+            if not es_transitorio or es_ultimo_intento:
+                raise
+            espera_segundos = espera_base_segundos * (2 ** (numero_intento - 1))
+            logger.warning(
+                "Anthropic %s en intento %d/%d; reintentando en %.0fs",
+                status_code or "sin conexion",
+                numero_intento,
+                intentos_maximos,
+                espera_segundos,
+            )
+            await asyncio.sleep(espera_segundos)
+    raise RuntimeError("_leer_screenshot_con_reintento agoto los intentos sin resultado")
+
+
 async def procesar_screenshot_alarmas(imagen, notas_texto: str, tecnico: str, bot) -> list[dict]:
     img_bytes = await (await bot.get_file(imagen.file_id)).download_as_bytearray()
     img_b64 = base64.standard_b64encode(img_bytes).decode()
 
-    response = await _client.messages.create(
-        model="claude-sonnet-4-6",
-        max_tokens=1000,
-        messages=[{"role": "user", "content": [
-            {"type": "image", "source": {"type": "base64", "media_type": "image/jpeg", "data": img_b64}},
-            {"type": "text", "text": _PROMPT_ZENER},
-        ]}],
-    )
+    response = await _leer_screenshot_con_reintento(img_b64)
     raw = response.content[0].text.strip().removeprefix("```json").removesuffix("```").strip()
     ordenes_raw = json.loads(raw).get("ordenes", [])
 

@@ -2,6 +2,7 @@ import logging
 import os
 from datetime import datetime
 
+import anthropic
 from dotenv import load_dotenv
 from telegram import InlineKeyboardButton, InlineKeyboardMarkup, Update
 from telegram.ext import (
@@ -111,6 +112,16 @@ async def recibir_screenshot(update: Update, context: ContextTypes.DEFAULT_TYPE)
         ]]
         await update.message.reply_text(resumen, reply_markup=InlineKeyboardMarkup(keyboard))
         return ESPERANDO_TECNICO
+    except (anthropic.APIStatusError, anthropic.APIConnectionError) as e:
+        # Saturacion o corte de red del lado de Anthropic: la imagen esta bien, solo
+        # hay que reintentar. Queda guardada en ultima_imagen, asi que basta con que
+        # el tecnico escriba cualquier cosa para releerla.
+        logger.error(f"Anthropic no disponible al leer screenshot: {e}")
+        await update.message.reply_text(
+            "El lector de imagenes esta saturado en este momento (no es culpa del "
+            "pantallazo). Escribeme cualquier cosa en un minuto y lo reintento."
+        )
+        return ESPERANDO_SCREENSHOT
     except Exception as e:
         logger.error(f"Error procesando screenshot: {e}")
         await update.message.reply_text(f"Error al procesar la imagen: {e}")
