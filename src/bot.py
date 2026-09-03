@@ -21,6 +21,10 @@ logging.basicConfig(
     format="%(asctime)s - %(name)s - %(levelname)s - %(message)s",
     level=logging.INFO,
 )
+# httpx registra en INFO la URL completa de cada peticion, y las de Telegram llevan
+# el token del bot dentro (.../bot<TOKEN>/getMe). Subirlo a WARNING lo saca de los
+# logs de Railway sin perder los fallos de red, que siguen saliendo en WARNING/ERROR.
+logging.getLogger("httpx").setLevel(logging.WARNING)
 logger = logging.getLogger(__name__)
 
 ESPERANDO_TECNICO, ESPERANDO_SCREENSHOT = range(2)
