@@ -7,7 +7,7 @@ from dotenv import load_dotenv
 from telegram import InlineKeyboardButton, InlineKeyboardMarkup, Update
 from telegram.ext import (
     Application, CallbackQueryHandler, CommandHandler,
-    ContextTypes, ConversationHandler, MessageHandler, filters,
+    ContextTypes, ConversationHandler, MessageHandler, TypeHandler, filters,
 )
 
 from alarmas import confirmar_registro_alarmas, procesar_screenshot_alarmas
@@ -265,8 +265,12 @@ def main() -> None:
             ESPERANDO_SCREENSHOT: [
                 MessageHandler(filters.PHOTO | filters.TEXT & ~filters.COMMAND, recibir_screenshot),
             ],
+            # TypeHandler y no MessageHandler: al caducar, PTB despacha el ultimo
+            # update recibido, y casi siempre es la pulsacion de un boton (elegir
+            # tecnico, Confirmar). Un MessageHandler no casa con un CallbackQuery y
+            # la conversacion moria en silencio, sin avisar al tecnico.
             ConversationHandler.TIMEOUT: [
-                MessageHandler(filters.ALL, timeout_alarma),
+                TypeHandler(Update, timeout_alarma),
             ],
         },
         fallbacks=[
