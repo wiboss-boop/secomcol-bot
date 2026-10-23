@@ -20,7 +20,7 @@ Bot de Telegram para gestión de órdenes de alarmas y fibra óptica.
 
 ## Flujo de alarmas
 
-1. `/alarma` → seleccionar técnico (JEAN / JOSE / DIANA / MARTIN)
+1. `/alarma` → seleccionar técnico (JEAN / JOSE / DIANA / MARTIN / RICARDO)
 2. Enviar screenshot de ZENER (con notas opcionales en el caption)
 3. Bot muestra las órdenes extraídas para confirmar
 4. Confirmar → se guardan en Google Sheets

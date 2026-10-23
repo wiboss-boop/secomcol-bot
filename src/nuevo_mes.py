@@ -6,7 +6,7 @@ from sheets import get_sheet, get_access_token, llamar_con_reintento
 
 logger = logging.getLogger(__name__)
 
-TECNICOS_ALARMAS = ["JEAN", "JOSE", "DIANA", "MARTIN"]
+TECNICOS_ALARMAS = ["JEAN", "JOSE", "DIANA", "MARTIN", "RICARDO"]
 
 MESES = {
     1: "ENERO", 2: "FEBRERO", 3: "MARZO", 4: "ABRIL",
@@ -16,7 +16,7 @@ MESES = {
 
 TABS_TECNICOS = [
     "CRISTIAN", "MARTIN", "JAMES", "JEAN", "YOHAN",
-    "ERCS", "HANS", "JOSE", "DIANA", "AYMAN", "LUIS E"
+    "ERCS", "HANS", "JOSE", "DIANA", "AYMAN", "LUIS E", "RICARDO"
 ]
 TABS_INTEGRAS = ["Base", "Hoja6"]
 TABS_SOLO_ENCABEZADO = TABS_TECNICOS + ["Descuentos"]

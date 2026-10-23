@@ -28,7 +28,7 @@ logging.getLogger("httpx").setLevel(logging.WARNING)
 logger = logging.getLogger(__name__)
 
 ESPERANDO_TECNICO, ESPERANDO_SCREENSHOT = range(2)
-TECNICOS_ALARMAS = ["JEAN", "JOSE", "DIANA", "MARTIN"]
+TECNICOS_ALARMAS = ["JEAN", "JOSE", "DIANA", "MARTIN", "RICARDO"]
 ALLOWED_USERS = (
     list(map(int, os.getenv("ALLOWED_USERS", "").split(",")))
     if os.getenv("ALLOWED_USERS") else []
