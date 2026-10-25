@@ -66,9 +66,12 @@ async def _actualizar_variable_railway(nombre_var: str, valor: str) -> None:
     token = os.getenv("RAILWAY_TOKEN")
     service_id = os.getenv("RAILWAY_SERVICE_ID")
     environment_id = os.getenv("RAILWAY_ENVIRONMENT_ID", "")
+    # Railway inyecta RAILWAY_PROJECT_ID en cada servicio.
+    project_id = os.getenv("RAILWAY_PROJECT_ID", "")
 
     variables: dict = {
         "input": {
+            "projectId": project_id,
             "serviceId": service_id,
             "name": nombre_var,
             "value": valor,
@@ -80,7 +83,10 @@ async def _actualizar_variable_railway(nombre_var: str, valor: str) -> None:
     async with httpx.AsyncClient() as client:
         resp = await client.post(
             "https://backboard.railway.app/graphql/v2",
-            headers={"Authorization": f"Bearer {token}", "Content-Type": "application/json"},
+            # Token de PROYECTO (solo reliable-delight/production), no de cuenta: desde
+            # el incidente de Railway de oct-2026 el bot no lleva un token que alcance
+            # otros proyectos. Los de proyecto van en esta cabecera, no en Bearer.
+            headers={"Project-Access-Token": token, "Content-Type": "application/json"},
             json={
                 "query": "mutation variableUpsert($input: VariableUpsertInput!) { variableUpsert(input: $input) }",
                 "variables": variables,
